@@ -1748,6 +1748,7 @@ void eb_config_ctor(EbConfig *config_ptr) {
     config_ptr->snd_pass_enc_mode                         = MAX_ENC_PRESET + 1;
     config_ptr->intra_period                              = -2;
     config_ptr->intra_refresh_type                        = 1;
+    config_ptr->film_grain_denoise_strength               = 0;
     config_ptr->hierarchical_levels                       = 4;
     config_ptr->pred_structure                            = 2;
     config_ptr->enable_global_motion                      = EB_TRUE;
