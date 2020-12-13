@@ -25,11 +25,17 @@ extern "C" {
 #define SVT_VERSION_MINOR 8
 #define SVT_VERSION_PATCHLEVEL 5
 
-#ifdef _WIN32
+#if defined(EB_BUILDING_SHARED_LIBS)
+#if defined(_WIN32)
 #define EB_API __declspec(dllexport)
-#else
+#elif defined(__GNUC__) && __GNUC__ >= 4
 #define EB_API __attribute__ ((visibility ("default")))
-#endif
+#else
+#define EB_API
+#endif // if defined(_WIN32)
+#else
+#define EB_API
+#endif // if defined(EB_BUILDING_SHARED_LIBS)
 
 #define EB_MAX_NUM_OPERATING_POINTS 32
 
