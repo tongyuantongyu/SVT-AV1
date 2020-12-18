@@ -50,7 +50,7 @@ EbErrorType largest_coding_unit_ctor(SuperBlock *larget_coding_unit_ptr, uint8_t
     larget_coding_unit_ptr->origin_y = sb_origin_y;
 
     larget_coding_unit_ptr->index = sb_index;
-    uint32_t tot_blk_num                    = sb_size_pix == 128 ? 1024 : 256;
+    uint32_t tot_blk_num          = sb_size_pix == 128 ? 1024 : 256;
     EB_MALLOC_ARRAY(larget_coding_unit_ptr->final_blk_arr, tot_blk_num);
     EB_MALLOC_ARRAY(larget_coding_unit_ptr->av1xd, 1);
     // Do NOT initialize the final_blk_arr here
@@ -72,7 +72,7 @@ EbErrorType largest_coding_unit_ctor(SuperBlock *larget_coding_unit_ptr, uint8_t
     coeff_init_data.split_mode         = EB_FALSE;
 
     EB_NEW(larget_coding_unit_ptr->quantized_coeff,
-           eb_picture_buffer_desc_ctor,
+           svt_picture_buffer_desc_ctor,
            (EbPtr)&coeff_init_data);
 
     return EB_ErrorNone;

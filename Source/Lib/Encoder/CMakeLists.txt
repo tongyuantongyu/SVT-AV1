@@ -14,15 +14,16 @@
 # Shared Encoder Version
 set(ENC_VERSION_MAJOR 0)
 set(ENC_VERSION_MINOR 8)
-set(ENC_VERSION_PATCH 5)
+set(ENC_VERSION_PATCH 6)
 set(ENC_VERSION ${ENC_VERSION_MAJOR}.${ENC_VERSION_MINOR}.${ENC_VERSION_PATCH})
 
 if(UNIX)
     if(NOT APPLE)
-        find_library(M_LIB name m)
+        find_library(M_LIB NAMES m)
         if(M_LIB)
             list(APPEND PLATFORM_LIBS m)
         endif()
+        list(APPEND PLATFORM_LIBS Threads::Threads)
     endif()
     set(LIBS_PRIVATE "-lpthread -lm")
 endif()
@@ -49,7 +50,7 @@ link_directories(${PROJECT_SOURCE_DIR}/Source/Lib/Common/Codec/
 add_subdirectory(C_DEFAULT)
 add_subdirectory(Codec)
 add_subdirectory(Globals)
-if(X86)
+if(NOT COMPILE_C_ONLY AND HAVE_X86_PLATFORM)
     # Include Encoder Subdirectories
     include_directories(${PROJECT_SOURCE_DIR}/Source/Lib/Common/ASM_SSE2/
         ${PROJECT_SOURCE_DIR}/Source/Lib/Common/ASM_SSSE3/
@@ -96,7 +97,7 @@ if(common_lib_source)
 endif()
 
 # Encoder Lib Source Files
-if(X86)
+if(NOT COMPILE_C_ONLY AND HAVE_X86_PLATFORM)
     add_library(SvtAv1Enc
         ${all_files}
         $<TARGET_OBJECTS:COMMON_CODEC>
@@ -129,7 +130,8 @@ endif()
 set_target_properties(SvtAv1Enc PROPERTIES VERSION ${ENC_VERSION})
 set_target_properties(SvtAv1Enc PROPERTIES SOVERSION ${ENC_VERSION_MAJOR})
 set_target_properties(SvtAv1Enc PROPERTIES C_VISIBILITY_PRESET hidden)
-target_link_libraries(SvtAv1Enc ${PLATFORM_LIBS})
+target_link_libraries(SvtAv1Enc PUBLIC ${PLATFORM_LIBS})
+target_link_libraries(SvtAv1Enc PRIVATE cpuinfo_public)
 set(ENC_PKG_CONFIG_EXTRA_CFLAGS "")
 if (BUILD_SHARED_LIBS)
     target_compile_definitions(SvtAv1Enc

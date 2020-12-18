@@ -17,12 +17,12 @@ Note: moved from picture operators.
 keep this function here for profiling
 issues.
 *******************************************/
-uint32_t fast_loop_nxm_sad_kernel(const uint8_t *src, // input parameter, source samples Ptr
-                                  uint32_t       src_stride, // input parameter, source stride
-                                  const uint8_t *ref, // input parameter, reference samples Ptr
-                                  uint32_t       ref_stride, // input parameter, reference stride
-                                  uint32_t       height, // input parameter, block height (M)
-                                  uint32_t       width) // input parameter, block width (N)
+uint32_t svt_fast_loop_nxm_sad_kernel(const uint8_t *src, // input parameter, source samples Ptr
+                                      uint32_t       src_stride, // input parameter, source stride
+                                      const uint8_t *ref, // input parameter, reference samples Ptr
+                                      uint32_t ref_stride, // input parameter, reference stride
+                                      uint32_t height, // input parameter, block height (M)
+                                      uint32_t width) // input parameter, block width (N)
 {
     uint32_t x, y;
     uint32_t sad = 0;
@@ -55,15 +55,16 @@ uint32_t sad_16b_kernel_c(uint16_t *src, // input parameter, source samples Ptr
     return sad;
 }
 
-void sad_loop_kernel_c(uint8_t * src, // input parameter, source samples Ptr
-                       uint32_t  src_stride, // input parameter, source stride
-                       uint8_t * ref, // input parameter, reference samples Ptr
-                       uint32_t  ref_stride, // input parameter, reference stride
-                       uint32_t  block_height, // input parameter, block height (M)
-                       uint32_t  block_width, // input parameter, block width (N)
-                       uint64_t *best_sad, int16_t *x_search_center, int16_t *y_search_center,
-                       uint32_t src_stride_raw, // input parameter, source stride (no line skipping)
-                       int16_t search_area_width, int16_t search_area_height) {
+void svt_sad_loop_kernel_c(
+    uint8_t * src, // input parameter, source samples Ptr
+    uint32_t  src_stride, // input parameter, source stride
+    uint8_t * ref, // input parameter, reference samples Ptr
+    uint32_t  ref_stride, // input parameter, reference stride
+    uint32_t  block_height, // input parameter, block height (M)
+    uint32_t  block_width, // input parameter, block width (N)
+    uint64_t *best_sad, int16_t *x_search_center, int16_t *y_search_center,
+    uint32_t src_stride_raw, // input parameter, source stride (no line skipping)
+    int16_t search_area_width, int16_t search_area_height) {
     int16_t x_search_index;
     int16_t y_search_index;
 
@@ -109,22 +110,22 @@ static INLINE uint32_t sad_inline_c(const uint8_t *a, int a_stride, const uint8_
 }
 
 #define sadMxN(m, n)                                                              \
-    uint32_t eb_aom_sad##m##x##n##_c(                                             \
+    uint32_t svt_aom_sad##m##x##n##_c(                                            \
         const uint8_t *src, int src_stride, const uint8_t *ref, int ref_stride) { \
         return sad_inline_c(src, src_stride, ref, ref_stride, m, n);              \
     }
 
 // Calculate sad against 4 reference locations and store each in sad_array
-#define sadMxNx4D(m, n)                                                                        \
-    void eb_aom_sad##m##x##n##x4d_c(const uint8_t *      src,                                  \
-                                    int                  src_stride,                           \
-                                    const uint8_t *const ref_array[],                          \
-                                    int                  ref_stride,                           \
-                                    uint32_t *           sad_array) {                                     \
-        int i;                                                                                 \
-        for (i = 0; i < 4; ++i) {                                                              \
-            sad_array[i] = eb_aom_sad##m##x##n##_c(src, src_stride, ref_array[i], ref_stride); \
-        }                                                                                      \
+#define sadMxNx4D(m, n)                                                                         \
+    void svt_aom_sad##m##x##n##x4d_c(const uint8_t *      src,                                  \
+                                     int                  src_stride,                           \
+                                     const uint8_t *const ref_array[],                          \
+                                     int                  ref_stride,                           \
+                                     uint32_t *           sad_array) {                                     \
+        int i;                                                                                  \
+        for (i = 0; i < 4; ++i) {                                                               \
+            sad_array[i] = svt_aom_sad##m##x##n##_c(src, src_stride, ref_array[i], ref_stride); \
+        }                                                                                       \
     }
 
 // 128x128
@@ -204,23 +205,7 @@ sadMxNx4D(16, 64);
 sadMxN(64, 16);
 sadMxNx4D(64, 16);
 
-uint32_t nxm_sad_kernel_helper_c(const uint8_t *src, uint32_t src_stride, const uint8_t *ref,
-                                 uint32_t ref_stride, uint32_t height, uint32_t width) {
-    uint32_t nxm_sad = 0;
-
-    switch (width) {
-    case 4:
-    case 8:
-    case 16:
-    case 24:
-    case 32:
-    case 48:
-    case 64:
-    case 128:
-        nxm_sad = fast_loop_nxm_sad_kernel(src, src_stride, ref, ref_stride, height, width);
-        break;
-    default: assert(0);
-    }
-
-    return nxm_sad;
+uint32_t svt_nxm_sad_kernel_helper_c(const uint8_t *src, uint32_t src_stride, const uint8_t *ref,
+                                     uint32_t ref_stride, uint32_t height, uint32_t width) {
+    return svt_fast_loop_nxm_sad_kernel(src, src_stride, ref, ref_stride, height, width);
 };

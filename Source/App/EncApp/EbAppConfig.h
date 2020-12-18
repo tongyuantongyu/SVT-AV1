@@ -16,6 +16,8 @@
 
 #include "EbSvtAv1Enc.h"
 
+typedef struct EbAppContext_ EbAppContext;
+
 #ifdef _WIN32
 #define fseeko _fseeki64
 #define ftello _ftelli64
@@ -37,8 +39,8 @@ typedef enum AppPortActiveType { APP_PortActive = 0, APP_PortInactive } AppPortA
 
 typedef enum EncodePass {
     ENCODE_SINGLE_PASS, //single pass mode
-    ENCODE_FIRST_PASS,  // first pass of multi pass mode
-    ENCODE_LAST_PASS,   // last pass of multi pass mode
+    ENCODE_FIRST_PASS, // first pass of multi pass mode
+    ENCODE_LAST_PASS, // last pass of multi pass mode
     MAX_ENCODE_PASS = 2,
 } EncodePass;
 
@@ -82,7 +84,9 @@ extern uint32_t          app_malloc_count;
             *total_app_memory += ((n_elements) + (8 - ((n_elements) % 8)));  \
         }                                                                    \
     }                                                                        \
-    if (*(app_memory_map_index) >= MAX_APP_NUM_PTR) { return return_type; }  \
+    if (*(app_memory_map_index) >= MAX_APP_NUM_PTR) {                        \
+        return return_type;                                                  \
+    }                                                                        \
     app_malloc_count++;
 
 #define EB_APP_MALLOC_NR(type, pointer, n_elements, pointer_class, return_type) \
@@ -162,42 +166,31 @@ typedef struct EbConfig {
     /****************************************
      * File I/O
      ****************************************/
-    FILE *        config_file;
-    FILE *        input_file;
-    EbBool        input_file_is_fifo;
-    FILE *        bitstream_file;
-    FILE *        recon_file;
-    FILE *        error_log_file;
-    FILE *        stat_file;
-    FILE *        buffer_file;
-    FILE *        qp_file;
+    FILE * config_file;
+    FILE * input_file;
+    EbBool input_file_is_fifo;
+    FILE * bitstream_file;
+    FILE * recon_file;
+    FILE * error_log_file;
+    FILE * stat_file;
+    FILE * buffer_file;
+    FILE * qp_file;
     /* two pass */
-    int           pass;
-    const char*   stats;
-    FILE *        input_stat_file;
-    FILE *        output_stat_file;
-    EbBool        rc_firstpass_stats_out;
-    SvtAv1FixedBuf rc_twopass_stats_in;
+    int         pass;
+    const char *stats;
+    FILE *      input_stat_file;
+    FILE *      output_stat_file;
 
     FILE *        input_pred_struct_file;
     char *        input_pred_struct_filename;
     EbBool        y4m_input;
     unsigned char y4m_buf[9];
-    EbBool        use_qp_file;
-    uint8_t       progress; // 0 = no progress output, 1 = normal, 2 = aomenc style verbose progress
-    uint8_t       stat_report;
-    uint32_t      frame_rate;
-    uint32_t      frame_rate_numerator;
-    uint32_t      frame_rate_denominator;
-    uint32_t      injector_frame_rate;
-    uint32_t      injector;
-    uint32_t      speed_control_flag;
-    uint32_t      encoder_bit_depth;
-    EbBool        is_16bit_pipeline;
-    uint32_t      encoder_color_format;
-    uint32_t      compressed_ten_bit_format;
-    uint32_t      source_width;
-    uint32_t      source_height;
+
+    uint8_t progress; // 0 = no progress output, 1 = normal, 2 = aomenc style verbose progress
+    /****************************************
+     * Computational Performance Data
+     ****************************************/
+    EbPerformanceContext performance_context;
 
     uint32_t input_padded_width;
     uint32_t input_padded_height;
@@ -209,252 +202,16 @@ typedef struct EbConfig {
     int32_t   buffered_input;
     uint8_t **sequence_buffer;
 
-    /*****************************************
-     * Coding Structure
-     *****************************************/
-    int8_t enc_mode;
-    int32_t  intra_period;
-    uint32_t intra_refresh_type;
-    uint32_t hierarchical_levels;
-    uint32_t pred_structure;
+    uint32_t injector_frame_rate;
+    uint32_t injector;
+    uint32_t speed_control_flag;
 
-    /****************************************
-     * Quantization
-     ****************************************/
-    uint32_t qp;
-
-    /****************************************
-     * Film Grain
-     ****************************************/
-    uint32_t film_grain_denoise_strength;
-    /****************************************
-     * DLF
-     ****************************************/
-    EbBool disable_dlf_flag;
-
-    /****************************************
-     * Local Warped Motion
-     ****************************************/
-    int enable_warped_motion;
-
-    /****************************************
-     * Global Motion
-     ****************************************/
-    EbBool enable_global_motion;
-
-    /****************************************
-     * CDEF Level
-     * 0         OFF
-     * 1         64 step refinement
-     * 2         16 step refinement
-     * 3         8 step refinement
-     * 4         4 step refinement
-     * 5         1 step refinement
-    ****************************************/
-    int cdef_level;
-
-    /****************************************
-     * Restoration filtering
-    ****************************************/
-    int enable_restoration_filtering;
-    int sg_filter_mode;
-    int wn_filter_mode;
-    /****************************************
-     * intra angle delta
-    ****************************************/
-    int intra_angle_delta;
-    /****************************************
-     * intra inter compoound
-    ****************************************/
-    int inter_intra_compound;
-    /****************************************
-     * paeth
-    ****************************************/
-    int enable_paeth;
-    /****************************************
-     * smooth
-    ****************************************/
-    int enable_smooth;
-    /****************************************
-     * motion field motion vector
-    ****************************************/
-    int enable_mfmv;
-    /****************************************
-     * redundant block
-    ****************************************/
-    int enable_redundant_blk;
-    /****************************************
-      * spatial sse in full loop
-     ****************************************/
-    int spatial_sse_full_loop_level;
-    /****************************************
-      * over boundry block
-     ****************************************/
-    int over_bndry_blk;
-    /****************************************
-      * new nearest comb injection
-     ****************************************/
-    int new_nearest_comb_inject;
-    /****************************************
-      * nsq table
-     ****************************************/
-    int nsq_table;
-    /****************************************
-      * frame end cdf update
-     ****************************************/
-    int frame_end_cdf_update;
-    /****************************************
-      * predictive me
-     ****************************************/
-    int pred_me;
-    /****************************************
-      * bipred 3x3 injection
-     ****************************************/
-    int bipred_3x3_inject;
-    /****************************************
-      * compound level
-     ****************************************/
-    int compound_level;
-
-    /****************************************
-     * Chroma
-     *
-     * Level                Settings
-     * CHROMA_MODE_0  0     Full chroma search @ MD
-     * CHROMA_MODE_1  1     Fast chroma search @ MD
-     * CHROMA_MODE_2  2     Chroma blind @ MD + CFL @ EP
-     * CHROMA_MODE_3  3     Chroma blind @ MD + no CFL @ EP
-     *
-     * Default is -1 (AUTO)  */
-    int set_chroma_mode;
-
-    /* Disable chroma from luma (CFL)
-     *
-     * Default is -1 (auto) */
-    int disable_cfl_flag;
-
-    /****************************************
-     * OBMC
-     ****************************************/
-    int8_t obmc_level;
-    /****************************************
-     * RDOQ
-     * ****************************************/
-    int rdoq_level;
-    /****************************************
-     * Filter intra prediction
-     ****************************************/
-    int8_t filter_intra_level;
-    /****************************************
-     * Intra Edge Filter
-     ****************************************/
-    int enable_intra_edge_filter;
-    /****************************************
-     * Picture based rate estimation
-     ****************************************/
-    int pic_based_rate_est;
-    /****************************************
-     * ME Tools
-     ****************************************/
-    EbBool use_default_me_hme;
-    EbBool enable_hme_flag;
-    EbBool enable_hme_level0_flag;
-    EbBool enable_hme_level1_flag;
-    EbBool enable_hme_level2_flag;
-    EbBool ext_block_flag;
-
-    /****************************************
-     * ME Parameters
-     ****************************************/
-    uint32_t search_area_width;
-    uint32_t search_area_height;
-
-    /****************************************
-     * HME Parameters
-     ****************************************/
-    uint32_t number_hme_search_region_in_width;
-    uint32_t number_hme_search_region_in_height;
-    uint32_t hme_level0_total_search_area_width;
-    uint32_t hme_level0_total_search_area_height;
     uint32_t hme_level0_column_index;
     uint32_t hme_level0_row_index;
     uint32_t hme_level1_column_index;
     uint32_t hme_level1_row_index;
     uint32_t hme_level2_column_index;
     uint32_t hme_level2_row_index;
-    uint32_t hme_level0_search_area_in_width_array[EB_HME_SEARCH_AREA_COLUMN_MAX_COUNT];
-    uint32_t hme_level0_search_area_in_height_array[EB_HME_SEARCH_AREA_ROW_MAX_COUNT];
-    uint32_t hme_level1_search_area_in_width_array[EB_HME_SEARCH_AREA_COLUMN_MAX_COUNT];
-    uint32_t hme_level1_search_area_in_height_array[EB_HME_SEARCH_AREA_ROW_MAX_COUNT];
-    uint32_t hme_level2_search_area_in_width_array[EB_HME_SEARCH_AREA_COLUMN_MAX_COUNT];
-    uint32_t hme_level2_search_area_in_height_array[EB_HME_SEARCH_AREA_ROW_MAX_COUNT];
-
-    /****************************************
-     * MD Parameters
-     ****************************************/
-    int8_t  enable_hbd_mode_decision;
-    int32_t palette_level;
-    int32_t tile_columns;
-    int32_t tile_rows;
-
-    /****************************************
-     * Rate Control
-     ****************************************/
-    uint32_t scene_change_detection;
-    uint32_t rate_control_mode;
-    uint32_t look_ahead_distance;
-    uint32_t enable_tpl_la;
-    uint32_t target_bit_rate;
-    uint32_t max_qp_allowed;
-    uint32_t min_qp_allowed;
-    uint32_t vbv_bufsize;
-    uint32_t vbr_bias_pct;
-    uint32_t vbr_min_section_pct;
-    uint32_t vbr_max_section_pct;
-    uint32_t under_shoot_pct;
-    uint32_t over_shoot_pct;
-
-    EbBool enable_adaptive_quantization;
-
-    /****************************************
-     * Optional Features
-     ****************************************/
-
-    uint32_t screen_content_mode;
-    int      intrabc_mode;
-    uint32_t high_dynamic_range_input;
-    EbBool   unrestricted_motion_vector;
-
-    /****************************************
-     * Annex A Parameters
-     ****************************************/
-    uint32_t profile;
-    uint32_t tier;
-    uint32_t level;
-
-    /****************************************
-     * On-the-fly Testing
-     ****************************************/
-    EbBool eos_flag;
-
-    /****************************************
-    * CPU FLAGS available
-    ****************************************/
-    CPU_FLAGS cpu_flags_limit;
-
-    /****************************************
-     * Computational Performance Data
-     ****************************************/
-    EbPerformanceContext performance_context;
-
-    /****************************************
-    * Instance Info
-    ****************************************/
-    uint32_t channel_id;
-    uint32_t active_channel_count;
-    uint32_t logical_processors;
-    uint32_t unpin;
-    int32_t  target_socket;
     EbBool   stop_encoder; // to signal CTRL+C Event, need to stop encoding.
 
     uint64_t processed_frame_count;
@@ -462,46 +219,41 @@ typedef struct EbConfig {
 
     uint64_t byte_count_since_ivf;
     uint64_t ivf_count;
-
-    // --- start: ALTREF_FILTERING_SUPPORT
     /****************************************
-     * ALT-REF related Parameters
+     * On-the-fly Testing
      ****************************************/
-    int8_t tf_level;
-    uint8_t altref_strength;
-    uint8_t altref_nframes;
-    EbBool  enable_overlays;
-    // --- end: ALTREF_FILTERING_SUPPORT
+    EbBool eos_flag;
 
-    /****************************************
-     * Super-resolution related Parameters
-     ****************************************/
-    SUPERRES_MODE superres_mode;
-    uint8_t       superres_denom;
-    uint8_t       superres_kf_denom;
-    uint8_t       superres_qthres;
-
-    // prediction structure
-    PredictionStructureConfigEntry pred_struct[1 << (MAX_HIERARCHICAL_LEVEL - 1)];
-    EbBool                         enable_manual_pred_struct;
-    int32_t                        manual_pred_struct_entry_num;
-    int                 mrp_level;
+    EbSvtAv1EncConfiguration config;
 } EbConfig;
+
+typedef struct EncChannel {
+    EbConfig *           config; // Encoder Configuration
+    EbAppContext *       app_callback; // Instances App callback date
+    EbErrorType          return_error; // Error Handling
+    AppExitConditionType exit_cond_output; // Processing loop exit condition
+    AppExitConditionType exit_cond_recon; // Processing loop exit condition
+    AppExitConditionType exit_cond_input; // Processing loop exit condition
+    AppExitConditionType exit_cond; // Processing loop exit condition
+    EbBool               active;
+} EncChannel;
 
 typedef struct EncApp {
     SvtAv1FixedBuf rc_twopasses_stats;
 } EncApp;
 
-extern void eb_2pass_config_update(EbConfig *config_ptr);
-extern void eb_config_ctor(EbConfig *config_ptr);
-extern void eb_config_dtor(EbConfig *config_ptr);
+EbConfig *svt_config_ctor(EncodePass pass);
+void      svt_config_dtor(EbConfig *config_ptr);
 
-extern EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **config,
-                                     uint32_t num_channels, EbErrorType *return_errors,
-                                     char *warning_str[WARNING_LENGTH]);
+EbErrorType enc_channel_ctor(EncChannel *c, EncodePass pass);
+void        enc_channel_dctor(EncChannel *c, uint32_t inst_cnt);
+
+extern EbErrorType read_command_line(int32_t argc, char *const argv[], EncChannel *channels,
+                                     uint32_t num_channels, char *warning_str[WARNING_LENGTH]);
 extern uint32_t    get_help(int32_t argc, char *const argv[]);
 extern uint32_t    get_number_of_channels(int32_t argc, char *const argv[]);
-uint32_t get_passes(int32_t argc, char *const argv[], EncodePass pass[]);
-EbErrorType set_two_passes_stats(EbConfig *config, EncodePass pass,
-    const SvtAv1FixedBuf* rc_twopass_stats_in, uint32_t channel_number);
+uint32_t           get_passes(int32_t argc, char *const argv[], EncodePass pass[]);
+EbErrorType        set_two_passes_stats(EbConfig *config, EncodePass pass,
+                                        const SvtAv1FixedBuf *rc_twopass_stats_in,
+                                        uint32_t              channel_number);
 #endif //EbAppConfig_h

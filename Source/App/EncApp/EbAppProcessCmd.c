@@ -189,8 +189,7 @@ void log_error_output(FILE *error_log_file, uint32_t error_code) {
         break;
 
     case EB_ENC_EC_ERROR2:
-        fprintf(error_log_file,
-                "Error: copy_payload: output buffer too small!\n");
+        fprintf(error_log_file, "Error: copy_payload: output buffer too small!\n");
         break;
 
     case EB_ENC_EC_ERROR3: fprintf(error_log_file, "Error: encode_sb: Unknown mode type!\n"); break;
@@ -639,9 +638,9 @@ void read_input_frames(EbConfig *config, uint8_t is_16bit, EbBufferHeaderType *h
     const uint32_t input_padded_width  = config->input_padded_width;
     const uint32_t input_padded_height = config->input_padded_height;
     FILE *         input_file          = config->input_file;
-    EbSvtIOFormat *input_ptr = (EbSvtIOFormat *)header_ptr->p_buffer;
+    EbSvtIOFormat *input_ptr           = (EbSvtIOFormat *)header_ptr->p_buffer;
 
-    const uint8_t color_format  = config->encoder_color_format;
+    const uint8_t color_format  = config->config.encoder_color_format;
     const uint8_t subsampling_x = (color_format == EB_YUV444 ? 1 : 2) - 1;
 
     input_ptr->y_stride  = input_padded_width;
@@ -650,15 +649,16 @@ void read_input_frames(EbConfig *config, uint8_t is_16bit, EbBufferHeaderType *h
 
     if (config->buffered_input == -1) {
         uint64_t read_size;
-        if (is_16bit == 0 || (is_16bit == 1 && config->compressed_ten_bit_format == 0)) {
+        if (is_16bit == 0 || (is_16bit == 1 && config->config.compressed_ten_bit_format == 0)) {
             read_size = (uint64_t)SIZE_OF_ONE_FRAME_IN_BYTES(
                 input_padded_width, input_padded_height, color_format, is_16bit);
 
             header_ptr->n_filled_len = 0;
             /* if input is a y4m file, read next line which contains "FRAME" */
-            if (config->y4m_input == EB_TRUE) read_y4m_frame_delimiter(config);
+            if (config->y4m_input == EB_TRUE)
+                read_y4m_frame_delimiter(config->input_file, config->error_log_file);
             uint64_t luma_read_size = (uint64_t)input_padded_width * input_padded_height
-                                      << is_16bit;
+                << is_16bit;
             uint8_t *eb_input_ptr = input_ptr->luma;
             if (!config->y4m_input && config->processed_frame_count == 0 &&
                 (config->input_file == stdin || config->input_file_is_fifo)) {
@@ -669,29 +669,29 @@ void read_input_frames(EbConfig *config, uint8_t is_16bit, EbBufferHeaderType *h
                 header_ptr->n_filled_len += (uint32_t)fread(
                     eb_input_ptr, 1, luma_read_size - YUV4MPEG2_IND_SIZE, input_file);
             } else {
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->luma, 1, luma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->luma, 1, luma_read_size, input_file);
             }
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->cb, 1, luma_read_size >> (3 - color_format), input_file);
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->cr, 1, luma_read_size >> (3 - color_format), input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->cb, 1, luma_read_size >> (3 - color_format), input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->cr, 1, luma_read_size >> (3 - color_format), input_file);
 
             if (read_size != header_ptr->n_filled_len) {
                 fseek(input_file, 0, SEEK_SET);
                 if (config->y4m_input == EB_TRUE) {
-                    read_and_skip_y4m_header(config);
-                    read_y4m_frame_delimiter(config);
+                    read_and_skip_y4m_header(config->input_file);
+                    read_y4m_frame_delimiter(config->input_file, config->error_log_file);
                 }
-                header_ptr->n_filled_len =
-                    (uint32_t)fread(input_ptr->luma, 1, luma_read_size, input_file);
+                header_ptr->n_filled_len = (uint32_t)fread(
+                    input_ptr->luma, 1, luma_read_size, input_file);
                 header_ptr->n_filled_len += (uint32_t)fread(
                     input_ptr->cb, 1, luma_read_size >> (3 - color_format), input_file);
                 header_ptr->n_filled_len += (uint32_t)fread(
                     input_ptr->cr, 1, luma_read_size >> (3 - color_format), input_file);
             }
         } else {
-            assert(is_16bit == 1 && config->compressed_ten_bit_format == 1);
+            assert(is_16bit == 1 && config->config.compressed_ten_bit_format == 1);
             // 10-bit Compressed Unpacked Mode
             const uint32_t luma_read_size        = input_padded_width * input_padded_height;
             const uint32_t chroma_read_size      = luma_read_size >> (3 - color_format);
@@ -701,37 +701,37 @@ void read_input_frames(EbConfig *config, uint8_t is_16bit, EbBufferHeaderType *h
             // Fill the buffer with a complete frame
             header_ptr->n_filled_len = 0;
 
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->luma, 1, luma_read_size, input_file);
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->cb, 1, chroma_read_size, input_file);
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->cr, 1, chroma_read_size, input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->luma, 1, luma_read_size, input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->cb, 1, chroma_read_size, input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->cr, 1, chroma_read_size, input_file);
 
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->luma_ext, 1, nbit_luma_read_size, input_file);
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->cb_ext, 1, nbit_chroma_read_size, input_file);
-            header_ptr->n_filled_len +=
-                (uint32_t)fread(input_ptr->cr_ext, 1, nbit_chroma_read_size, input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->luma_ext, 1, nbit_luma_read_size, input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->cb_ext, 1, nbit_chroma_read_size, input_file);
+            header_ptr->n_filled_len += (uint32_t)fread(
+                input_ptr->cr_ext, 1, nbit_chroma_read_size, input_file);
 
             read_size = luma_read_size + nbit_luma_read_size +
                 2 * (chroma_read_size + nbit_chroma_read_size);
 
             if (read_size != header_ptr->n_filled_len) {
                 fseek(input_file, 0, SEEK_SET);
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->luma, 1, luma_read_size, input_file);
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->cb, 1, chroma_read_size, input_file);
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->cr, 1, chroma_read_size, input_file);
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->luma_ext, 1, nbit_luma_read_size, input_file);
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->cb_ext, 1, nbit_chroma_read_size, input_file);
-                header_ptr->n_filled_len +=
-                    (uint32_t)fread(input_ptr->cr_ext, 1, nbit_chroma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->luma, 1, luma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->cb, 1, chroma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->cr, 1, chroma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->luma_ext, 1, nbit_luma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->cb_ext, 1, nbit_chroma_read_size, input_file);
+                header_ptr->n_filled_len += (uint32_t)fread(
+                    input_ptr->cr_ext, 1, nbit_chroma_read_size, input_file);
             }
         }
 
@@ -750,17 +750,17 @@ void read_input_frames(EbConfig *config, uint8_t is_16bit, EbBufferHeaderType *h
         }
 
     } else {
-        if (is_16bit && config->compressed_ten_bit_format == 1) {
+        if (is_16bit && config->config.compressed_ten_bit_format == 1) {
             // Determine size of each plane
             const size_t luma_8bit_size   = input_padded_width * input_padded_height;
             const size_t chroma_8bit_size = luma_8bit_size >> (3 - color_format);
             const size_t luma_2bit_size   = luma_8bit_size / 4; //4-2bit pixels into 1 byte
             const size_t chroma_2bit_size = luma_2bit_size >> (3 - color_format);
 
-            input_ptr = (EbSvtIOFormat *)header_ptr->p_buffer;
-            input_ptr->y_stride      = input_padded_width;
-            input_ptr->cr_stride     = input_padded_width >> subsampling_x;
-            input_ptr->cb_stride     = input_padded_width >> subsampling_x;
+            input_ptr            = (EbSvtIOFormat *)header_ptr->p_buffer;
+            input_ptr->y_stride  = input_padded_width;
+            input_ptr->cr_stride = input_padded_width >> subsampling_x;
+            input_ptr->cb_stride = input_padded_width >> subsampling_x;
 
             input_ptr->luma =
                 config->sequence_buffer[config->processed_frame_count % config->buffered_input];
@@ -856,44 +856,72 @@ static unsigned char send_qp_on_the_fly(FILE *const qp_file, uint8_t *use_qp_fil
     return (unsigned)CLIP3(0, 63, tmp_qp);
 }
 
+static void injector(uint64_t processed_frame_count, uint32_t injector_frame_rate) {
+    static uint64_t start_times_seconds;
+    static uint64_t start_timesu_seconds;
+    static int      first_time = 0;
+
+    if (first_time == 0) {
+        first_time = 1;
+        app_svt_av1_get_time(&start_times_seconds, &start_timesu_seconds);
+    } else {
+        uint64_t current_times_seconds, current_timesu_seconds;
+        app_svt_av1_get_time(&current_times_seconds, &current_timesu_seconds);
+        const double elapsed_time = app_svt_av1_compute_overall_elapsed_time(
+            start_times_seconds,
+            start_timesu_seconds,
+            current_times_seconds,
+            current_timesu_seconds);
+        const int    buffer_frames     = 1; // How far ahead of time should we let it get
+        const double injector_interval = (double)(1 << 16) /
+            injector_frame_rate; // 1.0 / injector frame rate (in this
+        // case, 1.0/encodRate)
+        const double predicted_time  = (processed_frame_count - buffer_frames) * injector_interval;
+        const int    milli_sec_ahead = (int)(1000 * (predicted_time - elapsed_time));
+        if (milli_sec_ahead > 0)
+            app_svt_av1_sleep(milli_sec_ahead);
+    }
+}
+
 //************************************/
 // process_input_buffer
 // Reads yuv frames from file and copy
 // them into the input buffer
 /************************************/
-AppExitConditionType process_input_buffer(EbConfig *config, EbAppContext *app_call_back) {
-    uint8_t             is_16bit         = (uint8_t)(config->encoder_bit_depth > 8);
+void process_input_buffer(EncChannel *channel) {
+    EbConfig *          config           = channel->config;
+    EbAppContext *      app_call_back    = channel->app_callback;
+    uint8_t             is_16bit         = (uint8_t)(config->config.encoder_bit_depth > 8);
     EbBufferHeaderType *header_ptr       = app_call_back->input_buffer_pool;
     EbComponentType *   component_handle = (EbComponentType *)app_call_back->svt_encoder_handle;
 
     AppExitConditionType return_value = APP_ExitConditionNone;
 
-    const uint8_t color_format         = config->encoder_color_format;
+    const uint8_t color_format         = config->config.encoder_color_format;
     const int64_t input_padded_width   = config->input_padded_width;
     const int64_t input_padded_height  = config->input_padded_height;
     const int64_t frames_to_be_encoded = config->frames_to_be_encoded;
     int64_t       total_bytes_to_process_count;
     int64_t       remaining_byte_count;
-    uint32_t      compressed10bit_frame_size =
-        (uint32_t)((input_padded_width * input_padded_height) +
-                   2 * ((input_padded_width * input_padded_width) >> (3 - color_format)));
+    uint32_t      compressed10bit_frame_size = (uint32_t)(
+        (input_padded_width * input_padded_height) +
+        2 * ((input_padded_width * input_padded_width) >> (3 - color_format)));
     compressed10bit_frame_size += compressed10bit_frame_size / 4;
 
+    if (channel->exit_cond_input != APP_ExitConditionNone)
+        return;
     if (config->injector && config->processed_frame_count)
         injector(config->processed_frame_count, config->injector_frame_rate);
-    total_bytes_to_process_count =
-        (frames_to_be_encoded < 0)
-            ? -1
-            : (config->encoder_bit_depth == 10 && config->compressed_ten_bit_format == 1)
-                  ? frames_to_be_encoded * (int64_t)compressed10bit_frame_size
-                  : frames_to_be_encoded *
-                        SIZE_OF_ONE_FRAME_IN_BYTES(
-                            input_padded_width, input_padded_height, color_format, is_16bit);
+    total_bytes_to_process_count = (frames_to_be_encoded < 0) ? -1
+        : (config->config.encoder_bit_depth == 10 && config->config.compressed_ten_bit_format == 1)
+        ? frames_to_be_encoded * (int64_t)compressed10bit_frame_size
+        : frames_to_be_encoded *
+            SIZE_OF_ONE_FRAME_IN_BYTES(
+                input_padded_width, input_padded_height, color_format, is_16bit);
 
-    remaining_byte_count =
-        (total_bytes_to_process_count < 0)
-            ? -1
-            : total_bytes_to_process_count - (int64_t)config->processed_byte_count;
+    remaining_byte_count = (total_bytes_to_process_count < 0)
+        ? -1
+        : total_bytes_to_process_count - (int64_t)config->processed_byte_count;
 
     // If there are bytes left to encode, configure the header
     if (remaining_byte_count != 0 && config->stop_encoder == EB_FALSE) {
@@ -905,10 +933,11 @@ AppExitConditionType process_input_buffer(EbConfig *config, EbAppContext *app_ca
             config->frames_encoded    = (int32_t)(++config->processed_frame_count);
 
             // Configuration parameters changed on the fly
-            if (config->use_qp_file && config->qp_file)
-                header_ptr->qp = send_qp_on_the_fly(config->qp_file, &config->use_qp_file);
+            if (config->config.use_qp_file && config->qp_file)
+                header_ptr->qp = send_qp_on_the_fly(config->qp_file, &config->config.use_qp_file);
 
-            if (keep_running == 0 && !config->stop_encoder) config->stop_encoder = EB_TRUE;
+            if (keep_running == 0 && !config->stop_encoder)
+                config->stop_encoder = EB_TRUE;
             // Fill in Buffers Header control data
             header_ptr->pts      = config->processed_frame_count - 1;
             header_ptr->pic_type = EB_AV1_INVALID_PICTURE;
@@ -931,11 +960,11 @@ AppExitConditionType process_input_buffer(EbConfig *config, EbAppContext *app_ca
             svt_av1_enc_send_picture(component_handle, header_ptr);
         }
 
-        return_value =
-            (header_ptr->flags == EB_BUFFERFLAG_EOS) ? APP_ExitConditionFinished : return_value;
+        return_value = (header_ptr->flags == EB_BUFFERFLAG_EOS) ? APP_ExitConditionFinished
+                                                                : return_value;
     }
 
-    return return_value;
+    channel->exit_cond_input = return_value;
 }
 
 #define LONG_ENCODE_FRAME_ENCODE 4000
@@ -974,13 +1003,13 @@ static void write_ivf_stream_header(EbConfig *config) {
     mem_put_le32(header + 8, AV1_FOURCC); // fourcc
     mem_put_le16(header + 12, config->input_padded_width); // width
     mem_put_le16(header + 14, config->input_padded_height); // height
-    if (config->frame_rate_denominator != 0 && config->frame_rate_numerator != 0) {
-        mem_put_le32(header + 16, config->frame_rate_numerator); // rate
-        mem_put_le32(header + 20, config->frame_rate_denominator); // scale
+    if (config->config.frame_rate_denominator != 0 && config->config.frame_rate_numerator != 0) {
+        mem_put_le32(header + 16, config->config.frame_rate_numerator); // rate
+        mem_put_le32(header + 20, config->config.frame_rate_denominator); // scale
             //mem_put_le32(header + 16, config->frame_rate_denominator);  // rate
             //mem_put_le32(header + 20, config->frame_rate_numerator);  // scale
     } else {
-        mem_put_le32(header + 16, (config->frame_rate >> 16) * 1000); // rate
+        mem_put_le32(header + 16, (config->config.frame_rate >> 16) * 1000); // rate
         mem_put_le32(header + 20, 1000); // scale
             //mem_put_le32(header + 16, config->frame_rate_denominator);  // rate
             //mem_put_le32(header + 20, config->frame_rate_numerator);  // scale
@@ -988,7 +1017,8 @@ static void write_ivf_stream_header(EbConfig *config) {
     mem_put_le32(header + 24, 0); // length
     mem_put_le32(header + 28, 0); // unused
     //config->performance_context.byte_count += 32;
-    if (config->bitstream_file) fwrite(header, 1, IVF_STREAM_HEADER_SIZE, config->bitstream_file);
+    if (config->bitstream_file)
+        fwrite(header, 1, IVF_STREAM_HEADER_SIZE, config->bitstream_file);
 
     return;
 }
@@ -1008,7 +1038,8 @@ static void write_ivf_frame_header(EbConfig *config, uint32_t byte_count) {
     config->ivf_count++;
     fflush(stdout);
 
-    if (config->bitstream_file) fwrite(header, 1, IVF_FRAME_HEADER_SIZE, config->bitstream_file);
+    if (config->bitstream_file)
+        fwrite(header, 1, IVF_FRAME_HEADER_SIZE, config->bitstream_file);
 }
 double get_psnr(double sse, double max) {
     double psnr;
@@ -1024,10 +1055,12 @@ double get_psnr(double sse, double max) {
 * Process Output STATISTICS Buffer
 ***************************************/
 void process_output_statistics_buffer(EbBufferHeaderType *header_ptr, EbConfig *config) {
-    uint32_t max_luma_value = (config->encoder_bit_depth == 8) ? 255 : 1023;
+    uint32_t max_luma_value = (config->config.encoder_bit_depth == 8) ? 255 : 1023;
     uint64_t picture_stream_size, luma_sse, cr_sse, cb_sse, picture_number, picture_qp;
     double   luma_ssim, cr_ssim, cb_ssim;
     double   temp_var, luma_psnr, cb_psnr, cr_psnr;
+    uint32_t source_width  = config->config.source_width;
+    uint32_t source_height = config->config.source_height;
 
     picture_stream_size = header_ptr->n_filled_len;
     luma_sse            = header_ptr->luma_sse;
@@ -1039,13 +1072,11 @@ void process_output_statistics_buffer(EbBufferHeaderType *header_ptr, EbConfig *
     cr_ssim             = header_ptr->cr_ssim;
     cb_ssim             = header_ptr->cb_ssim;
 
-    temp_var =
-        (double)max_luma_value * max_luma_value * (config->source_width * config->source_height);
+    temp_var = (double)max_luma_value * max_luma_value * (source_width * source_height);
 
     luma_psnr = get_psnr((double)luma_sse, temp_var);
 
-    temp_var = (double)max_luma_value * max_luma_value *
-               (config->source_width / 2 * config->source_height / 2);
+    temp_var = (double)max_luma_value * max_luma_value * (source_width / 2 * source_height / 2);
 
     cb_psnr = get_psnr((double)cb_sse, temp_var);
 
@@ -1060,12 +1091,12 @@ void process_output_statistics_buffer(EbBufferHeaderType *header_ptr, EbConfig *
     config->performance_context.sum_cb_sse += cb_sse;
 
     config->performance_context.sum_qp += picture_qp;
-    config->performance_context.sum_luma_ssim    += luma_ssim;
-    config->performance_context.sum_cr_ssim      += cr_ssim;
-    config->performance_context.sum_cb_ssim      += cb_ssim;
+    config->performance_context.sum_luma_ssim += luma_ssim;
+    config->performance_context.sum_cr_ssim += cr_ssim;
+    config->performance_context.sum_cb_ssim += cb_ssim;
 
     // Write statistic Data to file
-    if (config->stat_file)
+    if (config->stat_file) {
         fprintf(config->stat_file,
                 "Picture Number: %4d\t QP: %4d  [ "
                 "PSNR-Y: %.2f dB,\tPSNR-U: %.2f dB,\tPSNR-V: %.2f "
@@ -1077,20 +1108,22 @@ void process_output_statistics_buffer(EbBufferHeaderType *header_ptr, EbConfig *
                 luma_psnr,
                 cb_psnr,
                 cr_psnr,
-                (double)luma_sse / (config->source_width * config->source_height),
-                (double)cb_sse / (config->source_width / 2 * config->source_height / 2),
-                (double)cr_sse / (config->source_width / 2 * config->source_height / 2),
+                (double)luma_sse / (source_width * source_height),
+                (double)cb_sse / (source_width / 2 * source_height / 2),
+                (double)cr_sse / (source_width / 2 * source_height / 2),
                 luma_ssim,
                 cr_ssim,
                 cb_ssim,
                 (int)picture_stream_size);
+    }
 
     return;
 }
 
-AppExitConditionType process_output_stream_buffer(EncApp* enc_app, EbConfig *config, EbAppContext *app_call_back,
-                                                  uint8_t pic_send_done, int32_t *frame_count) {
-    AppPortActiveType *  port_state = &app_call_back->output_stream_port_active;
+void process_output_stream_buffer(EncChannel *channel, EncApp *enc_app, int32_t *frame_count) {
+    EbConfig *           config        = channel->config;
+    EbAppContext *       app_call_back = channel->app_callback;
+    AppPortActiveType *  port_state    = &app_call_back->output_stream_port_active;
     EbBufferHeaderType * header_ptr;
     EbComponentType *    component_handle = (EbComponentType *)app_call_back->svt_encoder_handle;
     AppExitConditionType return_value     = APP_ExitConditionNone;
@@ -1104,6 +1137,12 @@ AppExitConditionType process_output_stream_buffer(EncApp* enc_app, EbConfig *con
     uint64_t finish_s_time = 0;
     uint64_t finish_u_time = 0;
     uint8_t  is_alt_ref    = 1;
+    if (channel->exit_cond_output != APP_ExitConditionNone)
+        return;
+    uint8_t pic_send_done = (channel->exit_cond_input == APP_ExitConditionNone) ||
+            (channel->exit_cond_recon == APP_ExitConditionNone)
+        ? 0
+        : 1;
     while (is_alt_ref) {
         is_alt_ref = 0;
         // non-blocking call until all input frames are sent
@@ -1113,35 +1152,39 @@ AppExitConditionType process_output_stream_buffer(EncApp* enc_app, EbConfig *con
         if (stream_status == EB_ErrorMax) {
             fprintf(stderr, "\n");
             log_error_output(config->error_log_file, header_ptr->flags);
-            return APP_ExitConditionError;
+            channel->exit_cond_output = APP_ExitConditionError;
+            return;
         } else if (stream_status != EB_NoErrorEmptyQueue) {
-            is_alt_ref        = (header_ptr->flags & EB_BUFFERFLAG_IS_ALT_REF);
-            if (!(header_ptr->flags & EB_BUFFERFLAG_IS_ALT_REF))
+            uint32_t flags = header_ptr->flags;
+            is_alt_ref     = (flags & EB_BUFFERFLAG_IS_ALT_REF);
+            if (!(flags & EB_BUFFERFLAG_IS_ALT_REF))
                 ++(config->performance_context.frame_count);
             *total_latency += (uint64_t)header_ptr->n_tick_count;
-            *max_latency =
-                (header_ptr->n_tick_count > *max_latency) ? header_ptr->n_tick_count : *max_latency;
+            *max_latency = (header_ptr->n_tick_count > *max_latency) ? header_ptr->n_tick_count
+                                                                     : *max_latency;
 
-            finish_time((uint64_t *)&finish_s_time, (uint64_t *)&finish_u_time);
+            app_svt_av1_get_time(&finish_s_time, &finish_u_time);
 
             // total execution time, inc init time
-            compute_overall_elapsed_time(config->performance_context.lib_start_time[0],
-                                         config->performance_context.lib_start_time[1],
-                                         finish_s_time,
-                                         finish_u_time,
-                                         &config->performance_context.total_execution_time);
+            config->performance_context.total_execution_time =
+                app_svt_av1_compute_overall_elapsed_time(
+                    config->performance_context.lib_start_time[0],
+                    config->performance_context.lib_start_time[1],
+                    finish_s_time,
+                    finish_u_time);
 
             // total encode time
-            compute_overall_elapsed_time(config->performance_context.encode_start_time[0],
-                                         config->performance_context.encode_start_time[1],
-                                         finish_s_time,
-                                         finish_u_time,
-                                         &config->performance_context.total_encode_time);
+            config->performance_context.total_encode_time =
+                app_svt_av1_compute_overall_elapsed_time(
+                    config->performance_context.encode_start_time[0],
+                    config->performance_context.encode_start_time[1],
+                    finish_s_time,
+                    finish_u_time);
 
             // Write Stream Data to file
             if (stream_file) {
                 if (config->performance_context.frame_count == 1 &&
-                    !(header_ptr->flags & EB_BUFFERFLAG_IS_ALT_REF)) {
+                    !(flags & EB_BUFFERFLAG_IS_ALT_REF)) {
                     write_ivf_stream_header(config);
                 }
                 write_ivf_frame_header(config, header_ptr->n_filled_len);
@@ -1150,49 +1193,56 @@ AppExitConditionType process_output_stream_buffer(EncApp* enc_app, EbConfig *con
 
             config->performance_context.byte_count += header_ptr->n_filled_len;
 
-            if (config->stat_report && !(header_ptr->flags & EB_BUFFERFLAG_IS_ALT_REF))
+            if (config->config.stat_report && !(flags & EB_BUFFERFLAG_IS_ALT_REF))
                 process_output_statistics_buffer(header_ptr, config);
 
             // Update Output Port Activity State
-            *port_state  = (header_ptr->flags & EB_BUFFERFLAG_EOS) ? APP_PortInactive : *port_state;
-            return_value = (header_ptr->flags & EB_BUFFERFLAG_EOS) ? APP_ExitConditionFinished
-                                                                   : APP_ExitConditionNone;
-
+            *port_state  = (flags & EB_BUFFERFLAG_EOS) ? APP_PortInactive : *port_state;
+            return_value = (flags & EB_BUFFERFLAG_EOS) ? APP_ExitConditionFinished
+                                                       : APP_ExitConditionNone;
             // Release the output buffer
             svt_av1_enc_release_out_buffer(&header_ptr);
 
-            if (header_ptr->flags & EB_BUFFERFLAG_EOS) {
-                if (config->rc_firstpass_stats_out) {
+            if (flags & EB_BUFFERFLAG_EOS) {
+                if (config->config.rc_firstpass_stats_out) {
                     SvtAv1FixedBuf first_pass_stat;
-                    EbErrorType ret = svt_av1_enc_get_stream_info(component_handle,
-                        SVT_AV1_STREAM_INFO_FIRST_PASS_STATS_OUT, &first_pass_stat);
+                    EbErrorType    ret = svt_av1_enc_get_stream_info(
+                        component_handle,
+                        SVT_AV1_STREAM_INFO_FIRST_PASS_STATS_OUT,
+                        &first_pass_stat);
                     if (ret == EB_ErrorNone) {
                         if (config->output_stat_file) {
                             fwrite(first_pass_stat.buf,
-                                1, first_pass_stat.sz, config->output_stat_file);
+                                   1,
+                                   first_pass_stat.sz,
+                                   config->output_stat_file);
                         }
-                        enc_app->rc_twopasses_stats.buf = realloc(enc_app->rc_twopasses_stats.buf, first_pass_stat.sz);
+                        enc_app->rc_twopasses_stats.buf = realloc(enc_app->rc_twopasses_stats.buf,
+                                                                  first_pass_stat.sz);
                         if (enc_app->rc_twopasses_stats.buf) {
-                            memcpy(enc_app->rc_twopasses_stats.buf, first_pass_stat.buf, first_pass_stat.sz);
+                            memcpy(enc_app->rc_twopasses_stats.buf,
+                                   first_pass_stat.buf,
+                                   first_pass_stat.sz);
                             enc_app->rc_twopasses_stats.sz = first_pass_stat.sz;
                         }
                     }
                 }
-
             }
 
             ++*frame_count;
             const double fps = (double)*frame_count / config->performance_context.total_encode_time;
-            const double frame_rate = config->frame_rate_numerator && config->frame_rate_denominator
-                ? (double)config->frame_rate_numerator / (double)config->frame_rate_denominator
-                : config->frame_rate > 1000
-                    // Correct for 16-bit fixed-point fractional precision
-                    ? (double)config->frame_rate / (1 << 16)
-                    : (double)config->frame_rate;
+            const double frame_rate = config->config.frame_rate_numerator &&
+                    config->config.frame_rate_denominator
+                ? (double)config->config.frame_rate_numerator /
+                    (double)config->config.frame_rate_denominator
+                : config->config.frame_rate > 1000
+                // Correct for 16-bit fixed-point fractional precision
+                ? (double)config->config.frame_rate / (1 << 16)
+                : (double)config->config.frame_rate;
             switch (config->progress) {
             case 0: break;
             case 1:
-                if (!(header_ptr->flags & EB_BUFFERFLAG_IS_ALT_REF))
+                if (!(flags & EB_BUFFERFLAG_IS_ALT_REF))
                     fprintf(stderr, "\b\b\b\b\b\b\b\b\b%9d", *frame_count);
                 break;
             case 2:
@@ -1220,22 +1270,27 @@ AppExitConditionType process_output_stream_buffer(EncApp* enc_app, EbConfig *con
                         (double)*frame_count / config->performance_context.total_encode_time);
         }
     }
-    return return_value;
+    channel->exit_cond_output = return_value;
 }
-AppExitConditionType process_output_recon_buffer(EbConfig *config, EbAppContext *app_call_back) {
-
+void process_output_recon_buffer(EncChannel *channel) {
+    EbConfig *          config        = channel->config;
+    EbAppContext *      app_call_back = channel->app_callback;
     EbBufferHeaderType *header_ptr =
         app_call_back->recon_buffer; // needs to change for buffered input
     EbComponentType *    component_handle = (EbComponentType *)app_call_back->svt_encoder_handle;
     AppExitConditionType return_value     = APP_ExitConditionNone;
     int32_t              fseek_return_val;
+    if (channel->exit_cond_recon != APP_ExitConditionNone) {
+        return;
+    }
     // non-blocking call until all input frames are sent
     EbErrorType recon_status = svt_av1_get_recon(component_handle, header_ptr);
 
     if (recon_status == EB_ErrorMax) {
         fprintf(stderr, "\n");
         log_error_output(config->error_log_file, header_ptr->flags);
-        return APP_ExitConditionError;
+        channel->exit_cond_recon = APP_ExitConditionError;
+        return;
     } else if (recon_status != EB_NoErrorEmptyQueue) {
         //Sets the File position to the beginning of the file.
         rewind(config->recon_file);
@@ -1245,7 +1300,8 @@ AppExitConditionType process_output_recon_buffer(EbConfig *config, EbAppContext 
 
             if (fseek_return_val != 0) {
                 fprintf(stderr, "Error in fseeko  returnVal %i\n", fseek_return_val);
-                return APP_ExitConditionError;
+                channel->exit_cond_recon = APP_ExitConditionError;
+                return;
             }
             frame_num = frame_num - 1;
         }
@@ -1256,5 +1312,5 @@ AppExitConditionType process_output_recon_buffer(EbConfig *config, EbAppContext 
         return_value = (header_ptr->flags & EB_BUFFERFLAG_EOS) ? APP_ExitConditionFinished
                                                                : APP_ExitConditionNone;
     }
-    return return_value;
+    channel->exit_cond_recon = return_value;
 }

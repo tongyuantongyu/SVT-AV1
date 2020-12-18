@@ -15,9 +15,9 @@
 /*********************************
 * Picture Average
 *********************************/
-void picture_average_kernel_c(EbByte src0, uint32_t src0_stride, EbByte src1, uint32_t src1_stride,
-                              EbByte dst, uint32_t dst_stride, uint32_t area_width,
-                              uint32_t area_height) {
+void svt_picture_average_kernel_c(EbByte src0, uint32_t src0_stride, EbByte src1,
+                                  uint32_t src1_stride, EbByte dst, uint32_t dst_stride,
+                                  uint32_t area_width, uint32_t area_height) {
     uint32_t x, y;
 
     for (y = 0; y < area_height; y++) {
@@ -28,7 +28,7 @@ void picture_average_kernel_c(EbByte src0, uint32_t src0_stride, EbByte src1, ui
     }
 }
 
-void picture_average_kernel1_line_c(EbByte src0, EbByte src1, EbByte dst, uint32_t areaWidth) {
+void svt_picture_average_kernel1_line_c(EbByte src0, EbByte src1, EbByte dst, uint32_t areaWidth) {
     uint32_t i;
     for (i = 0; i < areaWidth; i++) dst[i] = (src0[i] + src1[i] + 1) / 2;
 }
@@ -36,8 +36,7 @@ void picture_average_kernel1_line_c(EbByte src0, EbByte src1, EbByte dst, uint32
 /*********************************
 * Picture Copy Kernel
 *********************************/
-void eb_memcpy_c(void  *dst_ptr, void  const*src_ptr, size_t size)
-{
+void svt_memcpy_c(void *dst_ptr, void const *src_ptr, size_t size) {
     memcpy(dst_ptr, src_ptr, size);
 }
 void picture_copy_kernel(EbByte src, uint32_t src_stride, EbByte dst, uint32_t dst_stride,
@@ -52,7 +51,7 @@ void picture_copy_kernel(EbByte src, uint32_t src_stride, EbByte dst, uint32_t d
     dst_stride *= bytes_per_sample;
 
     while (sample_count < sample_total_count) {
-        eb_memcpy_c(dst, src, copy_length);
+        svt_memcpy_c(dst, src, copy_length);
         src += src_stride;
         dst += dst_stride;
         sample_count += area_width;
@@ -63,10 +62,10 @@ void picture_copy_kernel(EbByte src, uint32_t src_stride, EbByte dst, uint32_t d
 
 // C equivalents
 
-uint64_t spatial_full_distortion_kernel_c(uint8_t *input, uint32_t input_offset,
-                                          uint32_t input_stride, uint8_t *recon,
-                                          int32_t recon_offset, uint32_t recon_stride,
-                                          uint32_t area_width, uint32_t area_height) {
+uint64_t svt_spatial_full_distortion_kernel_c(uint8_t *input, uint32_t input_offset,
+                                              uint32_t input_stride, uint8_t *recon,
+                                              int32_t recon_offset, uint32_t recon_stride,
+                                              uint32_t area_width, uint32_t area_height) {
     uint64_t spatial_distortion = 0;
     input += input_offset;
     recon += recon_offset;
@@ -74,8 +73,8 @@ uint64_t spatial_full_distortion_kernel_c(uint8_t *input, uint32_t input_offset,
     for (uint32_t row_index = 0; row_index < area_height; ++row_index) {
         uint32_t column_index = 0;
         while (column_index < area_width) {
-            spatial_distortion +=
-                (int64_t)SQR((int64_t)(input[column_index]) - (recon[column_index]));
+            spatial_distortion += (int64_t)SQR((int64_t)(input[column_index]) -
+                                               (recon[column_index]));
             ++column_index;
         }
 

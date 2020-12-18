@@ -14,7 +14,6 @@
 # Include Subdirectories
 include_directories(${PROJECT_SOURCE_DIR}/test/
     ${PROJECT_SOURCE_DIR}/test/ref
-    ${PROJECT_SOURCE_DIR}/Bin/${CMAKE_BUILD_TYPE}/
     ${PROJECT_SOURCE_DIR}/third_party/googletest/include third_party/googletest/src
     ${PROJECT_SOURCE_DIR}/Source/API
     ${PROJECT_SOURCE_DIR}/Source/Lib/Common/Codec
@@ -86,6 +85,7 @@ set(lib_list
     $<TARGET_OBJECTS:ENCODER_ASM_AVX2>
     $<TARGET_OBJECTS:ENCODER_ASM_AVX512>
     $<TARGET_OBJECTS:ENCODER_GLOBALS>
+    cpuinfo_public
     gtest_all)
 if(UNIX)
   # App Source Files
@@ -101,17 +101,13 @@ else()
         "${cxx_default}"
         "${lib_list}"
         ${all_files})
-
-    set_target_properties(SvtAv1UnitTests
-        PROPERTIES
-        COMPILE_DEFINITIONS "GTEST_LINKED_AS_SHARED_LIBRARY=1")
 endif()
 
 add_dependencies(SvtAv1UnitTests SvtAv1Enc SvtAv1Dec)
 
 install(TARGETS SvtAv1UnitTests RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-add_test(SvtAv1UnitTests ${PROJECT_SOURCE_DIR}/Bin/${CMAKE_BUILD_TYPE}/SvtAv1UnitTests)
+add_test(SvtAv1UnitTests ${CMAKE_OUTPUT_DIRECTORY}/SvtAv1UnitTests)
 
 add_subdirectory(api_test)
 add_subdirectory(e2e_test)

@@ -100,7 +100,8 @@ static INLINE unsigned int obmc_sad_w8n_avx2(const uint8_t *pre, const int pre_s
 
         n += 8;
 
-        if ((n & (width - 1)) == 0) pre += pre_step;
+        if ((n & (width - 1)) == 0)
+            pre += pre_step;
     } while (n < width * height);
 
     __m128i v_sad_d_0 = _mm256_castsi256_si128(v_sad_d);
@@ -110,7 +111,7 @@ static INLINE unsigned int obmc_sad_w8n_avx2(const uint8_t *pre, const int pre_s
 }
 
 #define OBMCSADWXH(w, h)                                                               \
-    unsigned int eb_aom_obmc_sad##w##x##h##_avx2(                                         \
+    unsigned int svt_aom_obmc_sad##w##x##h##_avx2(                                     \
         const uint8_t *pre, int pre_stride, const int32_t *wsrc, const int32_t *msk) { \
         if (w == 4) {                                                                  \
             return obmc_sad_w4_avx2(pre, pre_stride, wsrc, msk, h);                    \

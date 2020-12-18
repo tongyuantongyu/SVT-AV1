@@ -52,7 +52,7 @@
 
 #define MIN_GF_INTERVAL 4
 #define MAX_GF_INTERVAL 32
-#define FIXED_GF_INTERVAL 8  // Used in some testing modes only
+#define FIXED_GF_INTERVAL 8 // Used in some testing modes only
 #define MAX_GF_LENGTH_LAP 16
 
 #define MAX_NUM_GF_INTERVALS 15
@@ -65,8 +65,8 @@ enum {
     GF_UPDATE,
     ARF_UPDATE,
     OVERLAY_UPDATE,
-    INTNL_OVERLAY_UPDATE,  // Internal Overlay Frame
-    INTNL_ARF_UPDATE,      // Internal Altref Frame
+    INTNL_OVERLAY_UPDATE, // Internal Overlay Frame
+    INTNL_ARF_UPDATE, // Internal Altref Frame
     FRAME_UPDATE_TYPES
 } UENUM1BYTE(FRAME_UPDATE_TYPE);
 
@@ -200,17 +200,19 @@ typedef struct {
     int enable_scenecut_detection;
     int use_arf_in_this_kf_group;
     int next_is_fwd_key;
+    int top_index;
+    int bottom_index;
 } RATE_CONTROL;
 
 /**************************************
  * Input Port Types
  **************************************/
 typedef enum RateControlInputPortTypes {
-    RATE_CONTROL_INPUT_PORT_PICTURE_MANAGER = 0,
-    RATE_CONTROL_INPUT_PORT_PACKETIZATION   = 1,
-    RATE_CONTROL_INPUT_PORT_ENTROPY_CODING  = 2,
-    RATE_CONTROL_INPUT_PORT_TOTAL_COUNT     = 3,
-    RATE_CONTROL_INPUT_PORT_INVALID         = ~0,
+    RATE_CONTROL_INPUT_PORT_INLME          = 0,
+    RATE_CONTROL_INPUT_PORT_PACKETIZATION  = 1,
+    RATE_CONTROL_INPUT_PORT_ENTROPY_CODING = 2,
+    RATE_CONTROL_INPUT_PORT_TOTAL_COUNT    = 3,
+    RATE_CONTROL_INPUT_PORT_INVALID        = ~0,
 } RateControlInputPortTypes;
 
 /**************************************
@@ -281,10 +283,11 @@ typedef struct RateControlLayerContext {
 /**************************************
  * Extern Function Declarations
  **************************************/
-double eb_av1_convert_qindex_to_q(int32_t qindex, AomBitDepth bit_depth);
-int svt_av1_rc_get_default_min_gf_interval(int width, int height, double framerate);
-int svt_av1_rc_get_default_max_gf_interval(double framerate, int min_gf_interval);
-double av1_get_gfu_boost_projection_factor(double min_factor, double max_factor, int frame_count);
+double svt_av1_convert_qindex_to_q(int32_t qindex, AomBitDepth bit_depth);
+int    svt_av1_rc_get_default_min_gf_interval(int width, int height, double framerate);
+int    svt_av1_rc_get_default_max_gf_interval(double framerate, int min_gf_interval);
+double svt_av1_get_gfu_boost_projection_factor(double min_factor, double max_factor,
+                                               int frame_count);
 
 EbErrorType rate_control_context_ctor(EbThreadContext *  thread_context_ptr,
                                       const EbEncHandle *enc_handle_ptr);

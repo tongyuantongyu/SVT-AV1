@@ -98,21 +98,6 @@ int svt_av1_init_temporal_filtering(PictureParentControlSet ** list_picture_cont
                                     MotionEstimationContext_t *me_context_ptr,
                                     int32_t                    segment_index);
 
-void svt_av1_apply_filtering_c(const uint8_t *y_src, int y_src_stride, const uint8_t *y_pre,
-                               int y_pre_stride, const uint8_t *u_src, const uint8_t *v_src,
-                               int uv_src_stride, const uint8_t *u_pre, const uint8_t *v_pre,
-                               int uv_pre_stride, unsigned int block_width,
-                               unsigned int block_height, int ss_x, int ss_y, int strength,
-                               const int *blk_fw, int use_whole_blk, uint32_t *y_accum,
-                               uint16_t *y_count, uint32_t *u_accum, uint16_t *u_count,
-                               uint32_t *v_accum, uint16_t *v_count);
-
-void svt_av1_apply_filtering_highbd_c(
-    const uint16_t *y_src, int y_src_stride, const uint16_t *y_pre, int y_pre_stride,
-    const uint16_t *u_src, const uint16_t *v_src, int uv_src_stride, const uint16_t *u_pre,
-    const uint16_t *v_pre, int uv_pre_stride, unsigned int block_width, unsigned int block_height,
-    int ss_x, int ss_y, int strength, const int *blk_fw, int use_whole_blk, uint32_t *y_accum,
-    uint16_t *y_count, uint32_t *u_accum, uint16_t *u_count, uint32_t *v_accum, uint16_t *v_count);
 void svt_av1_apply_temporal_filter_planewise_c(
     struct MeContext *context_ptr, const uint8_t *y_src, int y_src_stride, const uint8_t *y_pre,
     int y_pre_stride, const uint8_t *u_src, const uint8_t *v_src, int uv_src_stride,
@@ -126,12 +111,10 @@ void svt_av1_apply_temporal_filter_planewise_hbd_c(
     const uint16_t *u_pre, const uint16_t *v_pre, int uv_pre_stride, unsigned int block_width,
     unsigned int block_height, int ss_x, int ss_y, const double *noise_levels,
     const int decay_control, uint32_t *y_accum, uint16_t *y_count, uint32_t *u_accum,
-    uint16_t *u_count, uint32_t *v_accum, uint16_t *v_count);
-double estimate_noise(const uint8_t *src, uint16_t width, uint16_t height,
-    uint16_t stride_y);
+    uint16_t *u_count, uint32_t *v_accum, uint16_t *v_count, uint32_t encoder_bit_depth);
+double estimate_noise(const uint8_t *src, uint16_t width, uint16_t height, uint16_t stride_y);
 
-double estimate_noise_highbd(const uint16_t *src, int width, int height, int stride,
-    int bd);
+double estimate_noise_highbd(const uint16_t *src, int width, int height, int stride, int bd);
 #ifdef __cplusplus
 }
 #endif

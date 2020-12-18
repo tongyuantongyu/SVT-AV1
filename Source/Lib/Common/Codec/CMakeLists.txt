@@ -21,7 +21,7 @@ add_custom_target(EbVersionHeaderGen
     COMMENT "Generating version header"
     VERBATIM)
 
-if(X86)
+if(NOT COMPILE_C_ONLY AND HAVE_X86_PLATFORM)
 # Include Encoder Subdirectories
 include_directories(${PROJECT_SOURCE_DIR}/Source/API/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Common/Codec/
@@ -32,14 +32,16 @@ include_directories(${PROJECT_SOURCE_DIR}/Source/API/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Common/ASM_AVX2/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Common/ASM_AVX512/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Encoder/Codec/
-    ${PROJECT_SOURCE_DIR}/third_party/fastfeat/)
+    ${PROJECT_SOURCE_DIR}/third_party/fastfeat/
+    ${PROJECT_SOURCE_DIR}/third_party/cpuinfo/include/)
 else ()
 # Include Encoder Subdirectories
 include_directories(${PROJECT_SOURCE_DIR}/Source/API/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Common/Codec/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Common/C_DEFAULT/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Encoder/Codec/
-    ${PROJECT_SOURCE_DIR}/third_party/fastfeat/)
+    ${PROJECT_SOURCE_DIR}/third_party/fastfeat/
+    ${PROJECT_SOURCE_DIR}/third_party/cpuinfo/include/)
 endif ()
 file(GLOB all_files
     "*.h"

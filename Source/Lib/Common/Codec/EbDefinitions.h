@@ -27,21 +27,13 @@
 #define inline
 #endif
 
-#if defined(_MSC_VER)
-#if defined(_M_IX86) || defined(_M_X64)
-#define ARCH_X86
-#endif
-#endif
-
-#if __GNUC__
-#if defined(__i386__) || defined(__x86_64__)
-#define ARCH_X86
-#endif
-#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#define SCD_LAD                                             6  //number of future frames
+#define PD_WINDOW_SIZE                                      (SCD_LAD +2) //adding previous+current to future
+#define MAX_TPL_GROUP_SIZE                                  64 //enough to cover 6L gop
+#define TPL_DEP_COST_SCALE_LOG2 4
 #define MAX_TX_WEIGHT 500
 #define MAX_TPL_LA_SW 60 // Max TPL look ahead sliding window size
 #define DEPTH_PROB_PRECISION 10000
@@ -106,6 +98,17 @@ enum {
     FAST_HEX     = 5,
     FAST_DIAMOND = 6
 } UENUM1BYTE(SEARCH_METHODS);
+
+enum {
+    // No recode.
+    DISALLOW_RECODE = 0,
+    // Allow recode for KF and exceeding maximum frame bandwidth.
+    ALLOW_RECODE_KFMAXBW = 1,
+    // Allow recode only for KF/ARF/GF frames.
+    ALLOW_RECODE_KFARFGF = 2,
+    // Allow recode for all frames based on bitrate constraints.
+    ALLOW_RECODE = 3,
+} UENUM1BYTE(RecodeLoopType);
 
 /********************************************************/
 /****************** Pre-defined Values ******************/
@@ -264,7 +267,7 @@ typedef int16_t InterpKernel[SUBPEL_TAPS];
 /***************************************************/
 /****************** Helper Macros ******************/
 /***************************************************/
-#ifdef ARCH_X86
+#ifdef ARCH_X86_64
 extern void RunEmms();
 #define aom_clear_system_state() RunEmms()
 #endif
@@ -493,11 +496,6 @@ typedef struct InterpFilterParams {
     uint16_t       subpel_shifts;
     InterpFilter   interp_filter;
 } InterpFilterParams;
-typedef enum TxSearchLevel {
-    TX_SEARCH_DCT_DCT_ONLY, // DCT_DCT only
-    TX_SEARCH_DCT_TX_TYPES, // Tx search DCT type(s): DCT_DCT, V_DCT, H_DCT
-    TX_SEARCH_ALL_TX_TYPES, // Tx search all type(s)
-} TxSearchLevel;
 typedef enum IfsLevel {
     IFS_OFF,  // IFS OFF
     IFS_MDS0, // IFS @ md_stage_0()
@@ -742,8 +740,26 @@ typedef enum ATTRIBUTE_PACKED {
     V_FLIPADST,
     H_FLIPADST,
     TX_TYPES,
+    INVALID_TX_TYPE,
 } TxType;
 
+#define MAX_TX_TYPE_GROUP 6
+static const TxType tx_type_group[MAX_TX_TYPE_GROUP][TX_TYPES] = {
+    { DCT_DCT, INVALID_TX_TYPE},
+    { V_DCT, H_DCT, INVALID_TX_TYPE},
+    { ADST_ADST, INVALID_TX_TYPE},
+    { ADST_DCT, DCT_ADST, INVALID_TX_TYPE},
+    { FLIPADST_FLIPADST, IDTX, INVALID_TX_TYPE},
+    { FLIPADST_DCT, DCT_FLIPADST, ADST_FLIPADST, FLIPADST_ADST, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST, INVALID_TX_TYPE}
+};
+static const TxType tx_type_group_sc[MAX_TX_TYPE_GROUP][TX_TYPES] = {
+    { DCT_DCT, IDTX, INVALID_TX_TYPE},
+    { V_DCT, H_DCT, INVALID_TX_TYPE},
+    { ADST_ADST, INVALID_TX_TYPE},
+    { ADST_DCT, DCT_ADST, INVALID_TX_TYPE},
+    { FLIPADST_FLIPADST, INVALID_TX_TYPE},
+    { FLIPADST_DCT, DCT_FLIPADST, ADST_FLIPADST, FLIPADST_ADST, V_ADST, H_ADST, V_FLIPADST, H_FLIPADST, INVALID_TX_TYPE}
+};
 typedef enum ATTRIBUTE_PACKED {
     // DCT only
     EXT_TX_SET_DCTONLY,
@@ -947,8 +963,8 @@ typedef uint16_t CONV_BUF_TYPE;
 #define MAX_WEDGE_SQUARE (MAX_WEDGE_SIZE * MAX_WEDGE_SIZE)
 #define WEDGE_WEIGHT_BITS 6
 #define WEDGE_NONE -1
-#define MASK_MASTER_SIZE ((MAX_WEDGE_SIZE) << 1)
-#define MASK_MASTER_STRIDE (MASK_MASTER_SIZE)
+#define MASK_PRIMARY_SIZE ((MAX_WEDGE_SIZE) << 1)
+#define MASK_PRIMARY_STRIDE (MASK_PRIMARY_SIZE)
 typedef struct {
     int enable_order_hint; // 0 - disable order hint, and related tools
     int order_hint_bits_minus_1; // dist_wtd_comp, ref_frame_mvs,
@@ -1644,10 +1660,62 @@ typedef struct LoopFilterInfoN {
 
 //**********************************************************************************************************************//
 // cdef.h
+typedef enum {
+  CDEF_FULL_SEARCH,      /**< Full search */
+  CDEF_FAST_SEARCH_LVL1, /**< Search among a subset of all possible filters. */
+  CDEF_FAST_SEARCH_LVL2, /**< Search reduced subset of filters than Level 1. */
+  CDEF_FAST_SEARCH_LVL3, /**< Search reduced subset of secondary filters than
+                              Level 2. */
+  CDEF_PICK_FROM_Q,      /**< Estimate filter strength based on quantizer. */
+  CDEF_PICK_METHODS
+} CDEF_PICK_METHOD;
 #define CDEF_STRENGTH_BITS 6
 
 #define CDEF_PRI_STRENGTHS 16
 #define CDEF_SEC_STRENGTHS 4
+#define REDUCED_PRI_STRENGTHS_LVL1 8
+#define REDUCED_PRI_STRENGTHS_LVL2 5
+#define REDUCED_SEC_STRENGTHS_LVL3 2
+
+#define REDUCED_TOTAL_STRENGTHS_LVL1 \
+  (REDUCED_PRI_STRENGTHS_LVL1 * CDEF_SEC_STRENGTHS)
+#define REDUCED_TOTAL_STRENGTHS_LVL2 \
+  (REDUCED_PRI_STRENGTHS_LVL2 * CDEF_SEC_STRENGTHS)
+#define REDUCED_TOTAL_STRENGTHS_LVL3 \
+  (REDUCED_PRI_STRENGTHS_LVL2 * REDUCED_SEC_STRENGTHS_LVL3)
+#define TOTAL_STRENGTHS (CDEF_PRI_STRENGTHS * CDEF_SEC_STRENGTHS)
+
+static const int priconv_lvl1[REDUCED_PRI_STRENGTHS_LVL1] = { 0, 1, 2,  3,
+                                                              5, 7, 10, 13 };
+static const int priconv_lvl2[REDUCED_PRI_STRENGTHS_LVL2] = { 0, 2, 4, 8, 14 };
+static const int secconv_lvl3[REDUCED_SEC_STRENGTHS_LVL3] = { 0, 2 };
+static const int nb_cdef_strengths[CDEF_PICK_METHODS] = {
+  TOTAL_STRENGTHS, REDUCED_TOTAL_STRENGTHS_LVL1, REDUCED_TOTAL_STRENGTHS_LVL2,
+  REDUCED_TOTAL_STRENGTHS_LVL3, TOTAL_STRENGTHS
+};
+static INLINE void get_cdef_filter_strengths(CDEF_PICK_METHOD pick_method,
+                                             int *pri_strength,
+                                             int *sec_strength,
+                                             int strength_idx) {
+  const int tot_sec_filter = (pick_method == CDEF_FAST_SEARCH_LVL3)
+                                 ? REDUCED_SEC_STRENGTHS_LVL3
+                                 : CDEF_SEC_STRENGTHS;
+  const int pri_idx = strength_idx / tot_sec_filter;
+  const int sec_idx = strength_idx % tot_sec_filter;
+  *pri_strength = pri_idx;
+  *sec_strength = sec_idx;
+  if (pick_method == CDEF_FULL_SEARCH) return;
+
+  switch (pick_method) {
+    case CDEF_FAST_SEARCH_LVL1: *pri_strength = priconv_lvl1[pri_idx]; break;
+    case CDEF_FAST_SEARCH_LVL2: *pri_strength = priconv_lvl2[pri_idx]; break;
+    case CDEF_FAST_SEARCH_LVL3:
+      *pri_strength = priconv_lvl2[pri_idx];
+      *sec_strength = secconv_lvl3[sec_idx];
+      break;
+    default: assert(0 && "Invalid CDEF search method");
+  }
+}
 
 // Bits of precision used for the model
 #define WARPEDMODEL_PREC_BITS 16
@@ -2015,6 +2083,16 @@ semaphores, mutexs, etc.
 */
 typedef void * EbHandle;
 
+
+
+/** The AtomicVarU32 type is used to define sn obj with its mutex
+*/
+typedef struct AtomicVarU32 {
+    uint32_t  obj;
+    EbHandle mutex;
+} AtomicVarU32;
+
+
 /**
 object_ptr is a EbPtr to the object being constructed.
 object_init_data_ptr is a EbPtr to a data structure used to initialize the object.
@@ -2132,14 +2210,14 @@ extern    uint32_t                   app_malloc_count;
 
 #define EB_CREATE_SEMAPHORE(pointer, initial_count, max_count) \
     do { \
-        pointer = eb_create_semaphore(initial_count, max_count); \
+        pointer = svt_create_semaphore(initial_count, max_count); \
         EB_ADD_MEM(pointer, 1, EB_SEMAPHORE); \
     }while (0)
 
 #define EB_DESTROY_SEMAPHORE(pointer) \
     do { \
         if (pointer) { \
-            eb_destroy_semaphore(pointer); \
+            svt_destroy_semaphore(pointer); \
             EB_REMOVE_MEM_ENTRY(pointer, EB_SEMAPHORE); \
             pointer = NULL; \
         } \
@@ -2147,14 +2225,14 @@ extern    uint32_t                   app_malloc_count;
 
 #define EB_CREATE_MUTEX(pointer) \
     do { \
-        pointer = eb_create_mutex(); \
+        pointer = svt_create_mutex(); \
         EB_ADD_MEM(pointer, 1, EB_MUTEX); \
     } while (0)
 
 #define EB_DESTROY_MUTEX(pointer) \
     do { \
         if (pointer) { \
-            eb_destroy_mutex(pointer); \
+            svt_destroy_mutex(pointer); \
             EB_REMOVE_MEM_ENTRY(pointer, EB_MUTEX); \
             pointer = NULL; \
         } \
@@ -2178,10 +2256,10 @@ typedef int32_t errno_t;
 #endif  /* _ERRNO_T_DEFINED */
 
 extern void
-    eb_memcpy_app(void  *dst_ptr, const void  *src_ptr, size_t size);
-#ifdef ARCH_X86
+    svt_memcpy_app(void  *dst_ptr, const void  *src_ptr, size_t size);
+#ifdef ARCH_X86_64
 #define EB_MEMCPY(dst, src, size) \
-    eb_memcpy_app(dst, src, size)
+    svt_memcpy_app(dst, src, size)
 #else
 #define EB_MEMCPY(dst, src, size) \
     memcpy(dst, src, size)

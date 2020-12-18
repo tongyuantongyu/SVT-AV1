@@ -19,12 +19,12 @@
 #include "synonyms.h"
 #include "convolve.h"
 
-void eb_av1_highbd_convolve_2d_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
-                                       int32_t dst_stride, int32_t w, int32_t h,
-                                       const InterpFilterParams *filter_params_x,
-                                       const InterpFilterParams *filter_params_y,
-                                       const int32_t subpel_x_q4, const int32_t subpel_y_q4,
-                                       ConvolveParams *conv_params, int32_t bd) {
+void svt_av1_highbd_convolve_2d_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
+                                        int32_t dst_stride, int32_t w, int32_t h,
+                                        const InterpFilterParams *filter_params_x,
+                                        const InterpFilterParams *filter_params_y,
+                                        const int32_t subpel_x_q4, const int32_t subpel_y_q4,
+                                        ConvolveParams *conv_params, int32_t bd) {
     DECLARE_ALIGNED(32, int16_t, im_block[(MAX_SB_SIZE + MAX_FILTER_TAP) * 8]);
     int32_t               im_h      = h + filter_params_y->taps - 1;
     int32_t               im_stride = 8;
@@ -39,13 +39,13 @@ void eb_av1_highbd_convolve_2d_sr_avx2(const uint16_t *src, int32_t src_stride, 
 
     __m256i s[8], coeffs_y[4], coeffs_x[4];
 
-    const __m256i round_const_x =
-        _mm256_set1_epi32(((1 << conv_params->round_0) >> 1) + (1 << (bd + FILTER_BITS - 1)));
+    const __m256i round_const_x = _mm256_set1_epi32(((1 << conv_params->round_0) >> 1) +
+                                                    (1 << (bd + FILTER_BITS - 1)));
     const __m128i round_shift_x = _mm_cvtsi32_si128(conv_params->round_0);
 
-    const __m256i round_const_y =
-        _mm256_set1_epi32(((1 << conv_params->round_1) >> 1) -
-                          (1 << (bd + 2 * FILTER_BITS - conv_params->round_0 - 1)));
+    const __m256i round_const_y = _mm256_set1_epi32(
+        ((1 << conv_params->round_1) >> 1) -
+        (1 << (bd + 2 * FILTER_BITS - conv_params->round_0 - 1)));
     const __m128i round_shift_y = _mm_cvtsi32_si128(conv_params->round_1);
 
     const int32_t bits             = FILTER_BITS * 2 - conv_params->round_0 - conv_params->round_1;
@@ -76,8 +76,8 @@ void eb_av1_highbd_convolve_2d_sr_avx2(const uint16_t *src, int32_t src_stride, 
                 s[3] = _mm256_alignr_epi8(r1, r0, 12);
 
                 __m256i res_even = convolve16_8tap_avx2(s, coeffs_x);
-                res_even =
-                    _mm256_sra_epi32(_mm256_add_epi32(res_even, round_const_x), round_shift_x);
+                res_even         = _mm256_sra_epi32(_mm256_add_epi32(res_even, round_const_x),
+                                            round_shift_x);
 
                 // odd pixels
                 s[0] = _mm256_alignr_epi8(r1, r0, 2);
@@ -122,17 +122,17 @@ void eb_av1_highbd_convolve_2d_sr_avx2(const uint16_t *src, int32_t src_stride, 
                 s[3] = _mm256_unpacklo_epi16(s6, s7);
                 s[7] = _mm256_unpackhi_epi16(s6, s7);
 
-                const __m256i res_a = convolve16_8tap_avx2(s, coeffs_y);
-                __m256i       res_a_round =
-                    _mm256_sra_epi32(_mm256_add_epi32(res_a, round_const_y), round_shift_y);
+                const __m256i res_a       = convolve16_8tap_avx2(s, coeffs_y);
+                __m256i       res_a_round = _mm256_sra_epi32(_mm256_add_epi32(res_a, round_const_y),
+                                                       round_shift_y);
 
                 res_a_round = _mm256_sra_epi32(_mm256_add_epi32(res_a_round, round_const_bits),
                                                round_shift_bits);
 
                 if (w - j > 4) {
                     const __m256i res_b = convolve16_8tap_avx2(s + 4, coeffs_y);
-                    __m256i       res_b_round =
-                        _mm256_sra_epi32(_mm256_add_epi32(res_b, round_const_y), round_shift_y);
+                    __m256i res_b_round = _mm256_sra_epi32(_mm256_add_epi32(res_b, round_const_y),
+                                                           round_shift_y);
                     res_b_round = _mm256_sra_epi32(_mm256_add_epi32(res_b_round, round_const_bits),
                                                    round_shift_bits);
 
@@ -209,12 +209,12 @@ static INLINE void copy_128(const uint16_t *src, uint16_t *dst) {
     _mm256_storeu_si256((__m256i *)(dst + 7 * 16), s[7]);
 }
 
-void eb_av1_highbd_convolve_2d_copy_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
-                                            int32_t dst_stride, int32_t w, int32_t h,
-                                            const InterpFilterParams *filter_params_x,
-                                            const InterpFilterParams *filter_params_y,
-                                            const int32_t subpel_x_q4, const int32_t subpel_y_q4,
-                                            ConvolveParams *conv_params, int32_t bd) {
+void svt_av1_highbd_convolve_2d_copy_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
+                                             int32_t dst_stride, int32_t w, int32_t h,
+                                             const InterpFilterParams *filter_params_x,
+                                             const InterpFilterParams *filter_params_y,
+                                             const int32_t subpel_x_q4, const int32_t subpel_y_q4,
+                                             ConvolveParams *conv_params, int32_t bd) {
     (void)filter_params_x;
     (void)filter_params_y;
     (void)subpel_x_q4;
@@ -224,10 +224,10 @@ void eb_av1_highbd_convolve_2d_copy_sr_avx2(const uint16_t *src, int32_t src_str
 
     if (w == 2) {
         do {
-            eb_memcpy_intrin_sse(dst, src, 2 * sizeof(*src));
+            svt_memcpy_intrin_sse(dst, src, 2 * sizeof(*src));
             src += src_stride;
             dst += dst_stride;
-            eb_memcpy_intrin_sse(dst, src, 2 * sizeof(*src));
+            svt_memcpy_intrin_sse(dst, src, 2 * sizeof(*src));
             src += src_stride;
             dst += dst_stride;
             h -= 2;

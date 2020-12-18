@@ -13,15 +13,16 @@
 # Shared Decoder Version
 set(DEC_VERSION_MAJOR 0)
 set(DEC_VERSION_MINOR 8)
-set(DEC_VERSION_PATCH 5)
+set(DEC_VERSION_PATCH 6)
 set(DEC_VERSION ${DEC_VERSION_MAJOR}.${DEC_VERSION_MINOR}.${DEC_VERSION_PATCH})
 
 if(UNIX)
     if(NOT APPLE)
-        find_library(M_LIB name m)
+        find_library(M_LIB NAMES m)
         if(M_LIB)
             list(APPEND PLATFORM_LIBS m)
         endif()
+        list(APPEND PLATFORM_LIBS Threads::Threads)
     endif()
     set(LIBS_PRIVATE "-lpthread -lm")
 endif()
@@ -45,7 +46,7 @@ link_directories(${PROJECT_SOURCE_DIR}/Source/Lib/Common/C_DEFAULT/
     ${PROJECT_SOURCE_DIR}/Source/Lib/Decoder/Codec/
     ${PROJECT_SOURCE_DIR}/third_party/fastfeat/)
 
-if(X86)
+if(NOT COMPILE_C_ONLY AND HAVE_X86_PLATFORM)
     # Include Decoder Subdirectories
     include_directories(${PROJECT_SOURCE_DIR}/Source/Lib/Common/ASM_SSE2/
         ${PROJECT_SOURCE_DIR}/Source/Lib/Common/ASM_SSSE3/
@@ -75,7 +76,7 @@ if(common_lib_source)
 endif()
 
 # Decoder Lib Source Files
-if(X86)
+if(NOT COMPILE_C_ONLY AND HAVE_X86_PLATFORM)
     add_library(SvtAv1Dec
         ${all_files}
         $<TARGET_OBJECTS:COMMON_CODEC>
@@ -98,7 +99,8 @@ set_target_properties(SvtAv1Dec PROPERTIES VERSION ${DEC_VERSION})
 set_target_properties(SvtAv1Dec PROPERTIES SOVERSION ${DEC_VERSION_MAJOR})
 set_target_properties(SvtAv1Dec PROPERTIES C_VISIBILITY_PRESET hidden)
 add_dependencies(SvtAv1Dec EbVersionHeaderGen)
-target_link_libraries(SvtAv1Dec ${PLATFORM_LIBS})
+target_link_libraries(SvtAv1Dec PUBLIC ${PLATFORM_LIBS})
+target_link_libraries(SvtAv1Dec PRIVATE cpuinfo_public)
 set(DEC_PKG_CONFIG_EXTRA_CFLAGS "")
 if (BUILD_SHARED_LIBS)
     target_compile_definitions(SvtAv1Dec

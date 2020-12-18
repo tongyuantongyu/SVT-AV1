@@ -14,8 +14,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#include "EbAppString.h"
 #include "EbAppConfig.h"
+#include "EbAppContext.h"
 #include "EbAppInputy4m.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -23,6 +23,10 @@
 #else
 #include <unistd.h>
 #include <sys/file.h>
+#endif
+
+#if !defined(_WIN32) || !defined(HAVE_STRNLEN_S)
+#include "third_party/safestringlib/safe_str_lib.h"
 #endif
 
 /**********************************
@@ -57,6 +61,13 @@
 #define BASE_LAYER_SWITCH_MODE_TOKEN "-base-layer-switch-mode" // no Eval
 #define QP_TOKEN "-q"
 #define USE_QP_FILE_TOKEN "-use-q-file"
+#if FTR_ENABLE_FIXED_QINDEX_OFFSETS
+#define USE_FIXED_QINDEX_OFFSETS_TOKEN "-use-fixed-qindex-offsets"
+#define QINDEX_OFFSETS_TOKEN "-qindex-offsets"
+#define KEY_FRAME_QINDEX_OFFSET_TOKEN "-key-frame-qindex-offset"
+#define KEY_FRAME_CHROMA_QINDEX_OFFSET_TOKEN "-key-frame-chroma-qindex-offset"
+#define CHROMA_QINDEX_OFFSETS_TOKEN "-chroma-qindex-offsets"
+#endif
 #define STAT_REPORT_TOKEN "-stat-report"
 #define FRAME_RATE_TOKEN "-fps"
 #define FRAME_RATE_NUMERATOR_TOKEN "-fps-num"
@@ -136,6 +147,7 @@
 #define VBR_MAX_SECTION_PCT_TOKEN "-maxsection-pct"
 #define UNDER_SHOOT_PCT_TOKEN "-undershoot-pct"
 #define OVER_SHOOT_PCT_TOKEN "-overshoot-pct"
+#define RECODE_LOOP_TOKEN "-recode-loop"
 #define ADAPTIVE_QP_ENABLE_TOKEN "-adaptive-quantization"
 #define LOOK_AHEAD_DIST_TOKEN "-lad"
 #define ENABLE_TPL_LA_TOKEN "-enable-tpl-la"
@@ -217,25 +229,22 @@
 #define MRP_LEVEL_TOKEN "--mrp-level"
 
 #ifdef _WIN32
-static HANDLE get_file_handle(FILE* fp)
-{
-    return (HANDLE)_get_osfhandle(_fileno(fp));
-}
+static HANDLE get_file_handle(FILE *fp) { return (HANDLE)_get_osfhandle(_fileno(fp)); }
 #endif
 
-static EbBool fopen_and_lock(FILE** file, const char* name, EbBool write)
-{
+static EbBool fopen_and_lock(FILE **file, const char *name, EbBool write) {
     if (!file || !name)
         return EB_FALSE;
 
-    const char* mode = write ? "wb" : "rb";
+    const char *mode = write ? "wb" : "rb";
     FOPEN(*file, name, mode);
     if (!*file)
         return EB_FALSE;
 
 #ifdef _WIN32
     HANDLE handle = get_file_handle(*file);
-    if (handle == INVALID_HANDLE_VALUE) return EB_FALSE;
+    if (handle == INVALID_HANDLE_VALUE)
+        return EB_FALSE;
     if (LockFile(handle, 0, 0, MAXDWORD, MAXDWORD))
         return EB_TRUE;
 #else
@@ -251,7 +260,8 @@ static EbBool fopen_and_lock(FILE** file, const char* name, EbBool write)
  * Set Cfg Functions
  **********************************/
 static void set_cfg_input_file(const char *filename, EbConfig *cfg) {
-    if (cfg->input_file && !cfg->input_file_is_fifo) fclose(cfg->input_file);
+    if (cfg->input_file && !cfg->input_file_is_fifo)
+        fclose(cfg->input_file);
 
     if (!filename) {
         cfg->input_file = NULL;
@@ -263,11 +273,14 @@ static void set_cfg_input_file(const char *filename, EbConfig *cfg) {
     else
         FOPEN(cfg->input_file, filename, "rb");
 
-    if (cfg->input_file == NULL) { return; }
+    if (cfg->input_file == NULL) {
+        return;
+    }
 
 #ifdef _WIN32
     HANDLE handle = (HANDLE)_get_osfhandle(_fileno(cfg->input_file));
-    if (handle == INVALID_HANDLE_VALUE) return;
+    if (handle == INVALID_HANDLE_VALUE)
+        return;
     cfg->input_file_is_fifo = GetFileType(handle) == FILE_TYPE_PIPE;
 #else
     int         fd = fileno(cfg->input_file);
@@ -280,16 +293,19 @@ static void set_cfg_input_file(const char *filename, EbConfig *cfg) {
 };
 
 static void set_pred_struct_file(const char *value, EbConfig *cfg) {
-
-    if (cfg->input_pred_struct_filename) { free(cfg->input_pred_struct_filename); }
+    if (cfg->input_pred_struct_filename) {
+        free(cfg->input_pred_struct_filename);
+    }
     cfg->input_pred_struct_filename = (char *)malloc(strlen(value) + 1);
-    EB_STRCPY(cfg->input_pred_struct_filename, strlen(value) + 1, value);
+    strcpy_s(cfg->input_pred_struct_filename, strlen(value) + 1, value);
 
-    cfg->enable_manual_pred_struct = EB_TRUE;
+    cfg->config.enable_manual_pred_struct = EB_TRUE;
 };
 
 static void set_cfg_stream_file(const char *value, EbConfig *cfg) {
-    if (cfg->bitstream_file && cfg->bitstream_file != stdout) { fclose(cfg->bitstream_file); }
+    if (cfg->bitstream_file && cfg->bitstream_file != stdout) {
+        fclose(cfg->bitstream_file);
+    }
 
     if (!strcmp(value, "stdout")) {
         cfg->bitstream_file = stdout;
@@ -298,23 +314,27 @@ static void set_cfg_stream_file(const char *value, EbConfig *cfg) {
     }
 };
 static void set_cfg_error_file(const char *value, EbConfig *cfg) {
-    if (cfg->error_log_file && cfg->error_log_file != stderr) { fclose(cfg->error_log_file); }
+    if (cfg->error_log_file && cfg->error_log_file != stderr) {
+        fclose(cfg->error_log_file);
+    }
     FOPEN(cfg->error_log_file, value, "w+");
 };
 static void set_cfg_recon_file(const char *value, EbConfig *cfg) {
-    if (cfg->recon_file) { fclose(cfg->recon_file); }
+    if (cfg->recon_file) {
+        fclose(cfg->recon_file);
+    }
     FOPEN(cfg->recon_file, value, "wb");
 };
 static void set_cfg_qp_file(const char *value, EbConfig *cfg) {
-    if (cfg->qp_file) { fclose(cfg->qp_file); }
+    if (cfg->qp_file) {
+        fclose(cfg->qp_file);
+    }
     FOPEN(cfg->qp_file, value, "r");
 };
 
-static void set_pass(const char* value, EbConfig *cfg) {
-    cfg->pass = strtol(value, NULL, 0);
-}
+static void set_pass(const char *value, EbConfig *cfg) { cfg->pass = strtol(value, NULL, 0); }
 
-static void set_two_pass_stats(const char* value, EbConfig *cfg) {
+static void set_two_pass_stats(const char *value, EbConfig *cfg) {
 #ifndef _WIN32
     cfg->stats = strdup(value);
 #else
@@ -322,7 +342,7 @@ static void set_two_pass_stats(const char* value, EbConfig *cfg) {
 #endif
 }
 
-static void set_passes(const char* value, EbConfig *cfg) {
+static void set_passes(const char *value, EbConfig *cfg) {
     (void)value;
     (void)cfg;
     /* empty function, we will handle passes at higher level*/
@@ -330,17 +350,19 @@ static void set_passes(const char* value, EbConfig *cfg) {
 }
 
 static void set_cfg_stat_file(const char *value, EbConfig *cfg) {
-    if (cfg->stat_file) { fclose(cfg->stat_file); }
+    if (cfg->stat_file) {
+        fclose(cfg->stat_file);
+    }
     FOPEN(cfg->stat_file, value, "wb");
 };
 static void set_stat_report(const char *value, EbConfig *cfg) {
-    cfg->stat_report = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.stat_report = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_cfg_source_width(const char *value, EbConfig *cfg) {
-    cfg->source_width = strtoul(value, NULL, 0);
+    cfg->config.source_width = strtoul(value, NULL, 0);
 };
 static void set_cfg_source_height(const char *value, EbConfig *cfg) {
-    cfg->source_height = strtoul(value, NULL, 0);
+    cfg->config.source_height = strtoul(value, NULL, 0);
 };
 static void set_cfg_frames_to_be_encoded(const char *value, EbConfig *cfg) {
     cfg->frames_to_be_encoded = strtol(value, NULL, 0);
@@ -362,262 +384,327 @@ static void set_progress(const char *value, EbConfig *cfg) {
     }
 }
 static void set_frame_rate(const char *value, EbConfig *cfg) {
-    cfg->frame_rate = strtoul(value, NULL, 0);
-    if (cfg->frame_rate <= 1000)
-        cfg->frame_rate <<= 16;
+    cfg->config.frame_rate = strtoul(value, NULL, 0);
+    if (cfg->config.frame_rate <= 1000)
+        cfg->config.frame_rate <<= 16;
 }
 
 static void set_frame_rate_numerator(const char *value, EbConfig *cfg) {
-    cfg->frame_rate_numerator = strtoul(value, NULL, 0);
+    cfg->config.frame_rate_numerator = strtoul(value, NULL, 0);
 };
 static void set_frame_rate_denominator(const char *value, EbConfig *cfg) {
-    cfg->frame_rate_denominator = strtoul(value, NULL, 0);
+    cfg->config.frame_rate_denominator = strtoul(value, NULL, 0);
 };
 static void set_encoder_bit_depth(const char *value, EbConfig *cfg) {
-    cfg->encoder_bit_depth = strtoul(value, NULL, 0);
+    cfg->config.encoder_bit_depth = strtoul(value, NULL, 0);
 }
 static void set_encoder_16bit_pipeline(const char *value, EbConfig *cfg) {
-    cfg->is_16bit_pipeline = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.is_16bit_pipeline = (EbBool)strtoul(value, NULL, 0);
 }
 static void set_encoder_color_format(const char *value, EbConfig *cfg) {
-    cfg->encoder_color_format = strtoul(value, NULL, 0);
+    cfg->config.encoder_color_format = (EbColorFormat)strtoul(value, NULL, 0);
 }
 static void set_compressed_ten_bit_format(const char *value, EbConfig *cfg) {
-    cfg->compressed_ten_bit_format = strtoul(value, NULL, 0);
+    cfg->config.compressed_ten_bit_format = strtoul(value, NULL, 0);
 }
 static void set_enc_mode(const char *value, EbConfig *cfg) {
-    cfg->enc_mode = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.enc_mode = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_cfg_intra_period(const char *value, EbConfig *cfg) {
-    cfg->intra_period = strtol(value, NULL, 0);
+    cfg->config.intra_period_length = strtol(value, NULL, 0);
 };
 static void set_cfg_intra_refresh_type(const char *value, EbConfig *cfg) {
-    cfg->intra_refresh_type = strtol(value, NULL, 0);
+    cfg->config.intra_refresh_type = strtol(value, NULL, 0);
 };
 static void set_hierarchical_levels(const char *value, EbConfig *cfg) {
-    cfg->hierarchical_levels = strtol(value, NULL, 0);
+    cfg->config.hierarchical_levels = strtol(value, NULL, 0);
 };
 static void set_cfg_pred_structure(const char *value, EbConfig *cfg) {
-    cfg->pred_structure = strtol(value, NULL, 0);
+    cfg->config.pred_structure = (uint8_t)strtol(value, NULL, 0);
 };
-static void set_cfg_qp(const char *value, EbConfig *cfg) { cfg->qp = strtoul(value, NULL, 0); };
+static void set_cfg_qp(const char *value, EbConfig *cfg) {
+    cfg->config.qp = strtoul(value, NULL, 0);
+};
 static void set_cfg_use_qp_file(const char *value, EbConfig *cfg) {
-    cfg->use_qp_file = (EbBool)strtol(value, NULL, 0);
+    cfg->config.use_qp_file = (EbBool)strtol(value, NULL, 0);
 };
+#if FTR_ENABLE_FIXED_QINDEX_OFFSETS
+static void set_cfg_use_fixed_qindex_offsets(const char *value, EbConfig *cfg) {
+    cfg->config.use_fixed_qindex_offsets = (EbBool)strtol(value, NULL, 0);
+}
+
+static void set_cfg_key_frame_qindex_offset(const char *value, EbConfig *cfg) {
+    cfg->config.key_frame_qindex_offset = (int32_t)strtol(value, NULL, 0);
+}
+
+static void set_cfg_key_frame_chroma_qindex_offset(const char *value, EbConfig *cfg) {
+    cfg->config.key_frame_chroma_qindex_offset = (int32_t)strtol(value, NULL, 0);
+}
+
+//assume the input list of values are in the format of "[v1,v2,v3,...]"
+int arg_parse_list(const char *value, int *list, int n) {
+    const char *ptr = value;
+    char *endptr;
+    int i = 0;
+    while (ptr[0] != '\0') {
+        if (ptr[0] == '[' || ptr[0] == ']') {
+            ptr++;
+            continue;
+        }
+
+        int32_t rawval = (int32_t)strtol(ptr, &endptr, 10);
+        if (i >= n) {
+            fprintf(stderr, "List has more than %d entries\n", n);
+            exit(1);
+        }
+        else if (*endptr == ',' || *endptr == ']') {
+            endptr++;
+        }
+        else if (*endptr != '\0') {
+            fprintf(stderr, "Bad list separator '%c'\n", *endptr);
+            exit(1);
+        }
+        list[i++] = (int)rawval;
+        ptr = endptr;
+    }
+    return i;
+}
+
+static void set_cfg_qindex_offsets(const char *value, EbConfig *cfg) {
+    if (cfg->config.hierarchical_levels == 0) {
+        fprintf(stderr, "qindex offsets parameter should be specificied after hierachical_levels\n");
+        exit(1);
+    }
+    arg_parse_list(value, cfg->config.qindex_offsets, cfg->config.hierarchical_levels + 1);
+}
+
+static void set_cfg_chroma_qindex_offsets(const char *value, EbConfig *cfg) {
+    if (cfg->config.hierarchical_levels == 0) {
+        fprintf(stderr, "chroma qindex offsets parameter should be specificied after hierachical_levels\n");
+        exit(1);
+    }
+    arg_parse_list(value, cfg->config.chroma_qindex_offsets, cfg->config.hierarchical_levels + 1);
+}
+#endif
 static void set_cfg_film_grain(const char *value, EbConfig *cfg) {
-    cfg->film_grain_denoise_strength = strtol(value, NULL, 0);
+    cfg->config.film_grain_denoise_strength = strtol(value, NULL, 0);
 }; //not bool to enable possible algorithm extension in the future
 static void set_disable_dlf_flag(const char *value, EbConfig *cfg) {
-    cfg->disable_dlf_flag = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.disable_dlf_flag = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_enable_local_warped_motion_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_warped_motion = strtol(value, NULL, 0);
+    cfg->config.enable_warped_motion = strtol(value, NULL, 0);
 };
 static void set_enable_global_motion_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_global_motion = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.enable_global_motion = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_cdef_level(const char *value, EbConfig *cfg) {
-    cfg->cdef_level = strtol(value, NULL, 0);
+    cfg->config.cdef_level = strtol(value, NULL, 0);
 };
 static void set_enable_restoration_filter_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_restoration_filtering = strtol(value, NULL, 0);
+    cfg->config.enable_restoration_filtering = strtol(value, NULL, 0);
 };
 static void set_sg_filter_mode(const char *value, EbConfig *cfg) {
-    cfg->sg_filter_mode = strtol(value, NULL, 0);
+    cfg->config.sg_filter_mode = strtol(value, NULL, 0);
 };
 static void set_wn_filter_mode(const char *value, EbConfig *cfg) {
-    cfg->wn_filter_mode = strtol(value, NULL, 0);
+    cfg->config.wn_filter_mode = strtol(value, NULL, 0);
 };
 static void set_intra_angle_delta_flag(const char *value, EbConfig *cfg) {
-    cfg->intra_angle_delta = strtol(value, NULL, 0);
+    cfg->config.intra_angle_delta = strtol(value, NULL, 0);
 };
 static void set_interintra_compound_flag(const char *value, EbConfig *cfg) {
-    cfg->inter_intra_compound = strtol(value, NULL, 0);
+    cfg->config.inter_intra_compound = strtol(value, NULL, 0);
 };
 static void set_enable_paeth_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_paeth = strtol(value, NULL, 0);
+    cfg->config.enable_paeth = strtol(value, NULL, 0);
 };
 static void set_enable_smooth_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_smooth = strtol(value, NULL, 0);
+    cfg->config.enable_smooth = strtol(value, NULL, 0);
 };
 static void set_mrp_level(const char *value, EbConfig *cfg) {
-    cfg->mrp_level = strtol(value, NULL, 0);
+    cfg->config.mrp_level = strtol(value, NULL, 0);
 };
 static void set_enable_mfmv_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_mfmv = strtol(value, NULL, 0);
+    cfg->config.enable_mfmv = strtol(value, NULL, 0);
 };
 static void set_enable_redundant_blk_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_redundant_blk = strtol(value, NULL, 0);
+    cfg->config.enable_redundant_blk = strtol(value, NULL, 0);
 };
 static void set_spatial_sse_full_loop_level_flag(const char *value, EbConfig *cfg) {
-    cfg->spatial_sse_full_loop_level = strtol(value, NULL, 0);
+    cfg->config.spatial_sse_full_loop_level = strtol(value, NULL, 0);
 };
 static void set_over_bndry_blk_flag(const char *value, EbConfig *cfg) {
-    cfg->over_bndry_blk = strtol(value, NULL, 0);
+    cfg->config.over_bndry_blk = strtol(value, NULL, 0);
 };
 static void set_new_nearest_comb_inject_flag(const char *value, EbConfig *cfg) {
-    cfg->new_nearest_comb_inject = strtol(value, NULL, 0);
+    cfg->config.new_nearest_comb_inject = strtol(value, NULL, 0);
 };
 static void set_nsq_table_flag(const char *value, EbConfig *cfg) {
-    cfg->nsq_table = strtol(value, NULL, 0);
+    cfg->config.nsq_table = strtol(value, NULL, 0);
 };
 static void set_frame_end_cdf_update_flag(const char *value, EbConfig *cfg) {
-    cfg->frame_end_cdf_update = strtol(value, NULL, 0);
+    cfg->config.frame_end_cdf_update = strtol(value, NULL, 0);
 };
 static void set_chroma_mode(const char *value, EbConfig *cfg) {
-    cfg->set_chroma_mode = strtol(value, NULL, 0);
+    cfg->config.set_chroma_mode = strtol(value, NULL, 0);
 };
 static void set_disable_cfl_flag(const char *value, EbConfig *cfg) {
-    cfg->disable_cfl_flag = strtol(value, NULL, 0);
+    cfg->config.disable_cfl_flag = strtol(value, NULL, 0);
 };
 static void set_obmc_level_flag(const char *value, EbConfig *cfg) {
-    cfg->obmc_level = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.obmc_level = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_rdoq_level_flag(const char *value, EbConfig *cfg) {
-    cfg->rdoq_level = strtol(value, NULL, 0);
+    cfg->config.rdoq_level = strtol(value, NULL, 0);
 };
 static void set_predictive_me_flag(const char *value, EbConfig *cfg) {
-    cfg->pred_me = strtol(value, NULL, 0);
+    cfg->config.pred_me = strtol(value, NULL, 0);
 };
 static void set_bipred3x3inject_flag(const char *value, EbConfig *cfg) {
-    cfg->bipred_3x3_inject = strtol(value, NULL, 0);
+    cfg->config.bipred_3x3_inject = strtol(value, NULL, 0);
 };
 static void set_compound_level_flag(const char *value, EbConfig *cfg) {
-    cfg->compound_level = strtol(value, NULL, 0);
+    cfg->config.compound_level = strtol(value, NULL, 0);
 };
 static void set_filter_intra_level_flag(const char *value, EbConfig *cfg) {
-    cfg->filter_intra_level = (int8_t)strtoul(value, NULL, 0);
+    cfg->config.filter_intra_level = (int8_t)strtoul(value, NULL, 0);
 };
 static void set_enable_intra_edge_filter_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_intra_edge_filter = strtol(value, NULL, 0);
+    cfg->config.enable_intra_edge_filter = strtol(value, NULL, 0);
 };
 static void set_pic_based_rate_est(const char *value, EbConfig *cfg) {
-    cfg->pic_based_rate_est = strtol(value, NULL, 0);
+    cfg->config.pic_based_rate_est = strtol(value, NULL, 0);
 };
 static void set_enable_hme_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_hme_flag = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.enable_hme_flag = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_enable_hme_level_0_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_hme_level0_flag = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.enable_hme_level0_flag = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_tile_row(const char *value, EbConfig *cfg) {
-    cfg->tile_rows = strtoul(value, NULL, 0);
+    cfg->config.tile_rows = strtoul(value, NULL, 0);
 };
 static void set_tile_col(const char *value, EbConfig *cfg) {
-    cfg->tile_columns = strtoul(value, NULL, 0);
+    cfg->config.tile_columns = strtoul(value, NULL, 0);
 };
 static void set_scene_change_detection(const char *value, EbConfig *cfg) {
-    cfg->scene_change_detection = strtoul(value, NULL, 0);
+    cfg->config.scene_change_detection = strtoul(value, NULL, 0);
 }
 static void set_look_ahead_distance(const char *value, EbConfig *cfg) {
-    cfg->look_ahead_distance = strtoul(value, NULL, 0);
+    cfg->config.look_ahead_distance = strtoul(value, NULL, 0);
 };
 static void set_enable_tpl_la(const char *value, EbConfig *cfg) {
-    cfg->enable_tpl_la = strtoul(value, NULL, 0);
+    cfg->config.enable_tpl_la = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_rate_control_mode(const char *value, EbConfig *cfg) {
-    cfg->rate_control_mode = strtoul(value, NULL, 0);
+    cfg->config.rate_control_mode = strtoul(value, NULL, 0);
 };
 static void set_target_bit_rate(const char *value, EbConfig *cfg) {
-    cfg->target_bit_rate = 1000 * strtoul(value, NULL, 0);
+    cfg->config.target_bit_rate = 1000 * strtoul(value, NULL, 0);
 };
 static void set_vbv_buf_size(const char *value, EbConfig *cfg) {
-    cfg->vbv_bufsize = 1000 * strtoul(value, NULL, 0);
+    cfg->config.vbv_bufsize = 1000 * strtoul(value, NULL, 0);
 };
 static void set_max_qp_allowed(const char *value, EbConfig *cfg) {
-    cfg->max_qp_allowed = strtoul(value, NULL, 0);
+    cfg->config.max_qp_allowed = strtoul(value, NULL, 0);
 };
 static void set_min_qp_allowed(const char *value, EbConfig *cfg) {
-    cfg->min_qp_allowed = strtoul(value, NULL, 0);
+    cfg->config.min_qp_allowed = strtoul(value, NULL, 0);
 };
 static void set_vbr_bias_pct(const char *value, EbConfig *cfg) {
-    cfg->vbr_bias_pct = strtoul(value, NULL, 0);
+    cfg->config.vbr_bias_pct = strtoul(value, NULL, 0);
 };
 static void set_vbr_min_section_pct(const char *value, EbConfig *cfg) {
-    cfg->vbr_min_section_pct = strtoul(value, NULL, 0);
+    cfg->config.vbr_min_section_pct = strtoul(value, NULL, 0);
 };
 static void set_vbr_max_section_pct(const char *value, EbConfig *cfg) {
-    cfg->vbr_max_section_pct = strtoul(value, NULL, 0);
+    cfg->config.vbr_max_section_pct = strtoul(value, NULL, 0);
 };
 static void set_under_shoot_pct(const char *value, EbConfig *cfg) {
-    cfg->under_shoot_pct = strtoul(value, NULL, 0);
+    cfg->config.under_shoot_pct = strtoul(value, NULL, 0);
 };
 static void set_over_shoot_pct(const char *value, EbConfig *cfg) {
-    cfg->over_shoot_pct = strtoul(value, NULL, 0);
+    cfg->config.over_shoot_pct = strtoul(value, NULL, 0);
+};
+static void set_recode_loop(const char *value, EbConfig *cfg) {
+    cfg->config.recode_loop = strtoul(value, NULL, 0);
 };
 static void set_adaptive_quantization(const char *value, EbConfig *cfg) {
-    cfg->enable_adaptive_quantization = (EbBool)strtol(value, NULL, 0);
+    cfg->config.enable_adaptive_quantization = (EbBool)strtol(value, NULL, 0);
 };
 static void set_enable_hme_level_1_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_hme_level1_flag = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.enable_hme_level1_flag = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_enable_hme_level_2_flag(const char *value, EbConfig *cfg) {
-    cfg->enable_hme_level2_flag = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.enable_hme_level2_flag = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_cfg_search_area_width(const char *value, EbConfig *cfg) {
-    cfg->search_area_width = strtoul(value, NULL, 0);
+    cfg->config.search_area_width = strtoul(value, NULL, 0);
 };
 static void set_cfg_search_area_height(const char *value, EbConfig *cfg) {
-    cfg->search_area_height = strtoul(value, NULL, 0);
+    cfg->config.search_area_height = strtoul(value, NULL, 0);
 };
 static void set_cfg_use_default_me_hme(const char *value, EbConfig *cfg) {
-    cfg->use_default_me_hme = (EbBool)strtol(value, NULL, 0);
+    cfg->config.use_default_me_hme = (EbBool)strtol(value, NULL, 0);
 };
 static void set_enable_ext_block_flag(const char *value, EbConfig *cfg) {
-    cfg->ext_block_flag = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.ext_block_flag = (EbBool)strtoul(value, NULL, 0);
 };
 static void set_screen_content_mode(const char *value, EbConfig *cfg) {
-    cfg->screen_content_mode = strtoul(value, NULL, 0);
+    cfg->config.screen_content_mode = strtoul(value, NULL, 0);
 };
 static void set_intrabc_mode(const char *value, EbConfig *cfg) {
-    cfg->intrabc_mode = strtol(value, NULL, 0);
+    cfg->config.intrabc_mode = strtol(value, NULL, 0);
 };
 // --- start: ALTREF_FILTERING_SUPPORT
 static void set_tf_level(const char *value, EbConfig *cfg) {
-    cfg->tf_level = (int8_t)strtoul(value, NULL, 0);
+    cfg->config.tf_level = (int8_t)strtoul(value, NULL, 0);
 };
 static void set_altref_strength(const char *value, EbConfig *cfg) {
-    cfg->altref_strength = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.altref_strength = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_altref_n_frames(const char *value, EbConfig *cfg) {
-    cfg->altref_nframes = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.altref_nframes = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_enable_overlays(const char *value, EbConfig *cfg) {
-    cfg->enable_overlays = (EbBool)strtoul(value, NULL, 0);
+    cfg->config.enable_overlays = (EbBool)strtoul(value, NULL, 0);
 };
 // --- end: ALTREF_FILTERING_SUPPORT
 // --- start: SUPER-RESOLUTION SUPPORT
 static void set_superres_mode(const char *value, EbConfig *cfg) {
-    cfg->superres_mode = (SUPERRES_MODE)strtoul(value, NULL, 0);
+    cfg->config.superres_mode = (SUPERRES_MODE)strtoul(value, NULL, 0);
 };
 static void set_superres_denom(const char *value, EbConfig *cfg) {
-    cfg->superres_denom = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.superres_denom = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_superres_kf_denom(const char *value, EbConfig *cfg) {
-    cfg->superres_kf_denom = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.superres_kf_denom = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_superres_qthres(const char *value, EbConfig *cfg) {
-    cfg->superres_qthres = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.superres_qthres = (uint8_t)strtoul(value, NULL, 0);
 };
 // --- end: SUPER-RESOLUTION SUPPORT
 static void set_enable_hbd_mode_decision(const char *value, EbConfig *cfg) {
-    cfg->enable_hbd_mode_decision = (uint8_t)strtoul(value, NULL, 0);
+    cfg->config.enable_hbd_mode_decision = (uint8_t)strtoul(value, NULL, 0);
 };
 static void set_palette_level(const char *value, EbConfig *cfg) {
-    cfg->palette_level = (int32_t)strtoul(value, NULL, 0);
+    cfg->config.palette_level = (int32_t)strtoul(value, NULL, 0);
 };
 static void set_high_dynamic_range_input(const char *value, EbConfig *cfg) {
-    cfg->high_dynamic_range_input = strtol(value, NULL, 0);
+    cfg->config.high_dynamic_range_input = strtol(value, NULL, 0);
 };
 static void set_profile(const char *value, EbConfig *cfg) {
-    cfg->profile = strtol(value, NULL, 0);
+    cfg->config.profile = strtol(value, NULL, 0);
 };
-static void set_tier(const char *value, EbConfig *cfg) { cfg->tier = strtol(value, NULL, 0); };
+static void set_tier(const char *value, EbConfig *cfg) {
+    cfg->config.tier = strtol(value, NULL, 0);
+};
 static void set_level(const char *value, EbConfig *cfg) {
-    if (strtoul(value, NULL, 0) != 0 || EB_STRCMP(value, "0") == 0)
-        cfg->level = (uint32_t)(10 * strtod(value, NULL));
+    if (strtoul(value, NULL, 0) != 0 || strcmp(value, "0") == 0)
+        cfg->config.level = (uint32_t)(10 * strtod(value, NULL));
     else
-        cfg->level = 9999999;
+        cfg->config.level = 9999999;
 };
 static void set_injector(const char *value, EbConfig *cfg) {
     cfg->injector = strtol(value, NULL, 0);
@@ -664,25 +751,25 @@ static void set_asm_type(const char *value, EbConfig *cfg) {
     uint32_t       i;
 
     for (i = 0; i < para_map_size; ++i) {
-        if (EB_STRCMP(value, param_maps[i].name) == 0) {
-            cfg->cpu_flags_limit = param_maps[i].flags;
+        if (strcmp(value, param_maps[i].name) == 0) {
+            cfg->config.use_cpu_flags = param_maps[i].flags;
             return;
         }
     }
 
-    cfg->cpu_flags_limit = CPU_FLAGS_INVALID;
+    cfg->config.use_cpu_flags = CPU_FLAGS_INVALID;
 };
 static void set_logical_processors(const char *value, EbConfig *cfg) {
-    cfg->logical_processors = (uint32_t)strtoul(value, NULL, 0);
+    cfg->config.logical_processors = (uint32_t)strtoul(value, NULL, 0);
 };
 static void set_unpin_execution(const char *value, EbConfig *cfg) {
-    cfg->unpin = (uint32_t)strtoul(value, NULL, 0);
+    cfg->config.unpin = (uint32_t)strtoul(value, NULL, 0);
 };
 static void set_target_socket(const char *value, EbConfig *cfg) {
-    cfg->target_socket = (int32_t)strtol(value, NULL, 0);
+    cfg->config.target_socket = (int32_t)strtol(value, NULL, 0);
 };
 static void set_unrestricted_motion_vector(const char *value, EbConfig *cfg) {
-    cfg->unrestricted_motion_vector = (EbBool)strtol(value, NULL, 0);
+    cfg->config.unrestricted_motion_vector = (EbBool)strtol(value, NULL, 0);
 };
 
 enum CfgType {
@@ -825,6 +912,23 @@ ConfigEntry config_entry_rc[] = {
      USE_QP_FILE_TOKEN,
      "Overwrite QP assignment using qp values in QP file",
      set_cfg_use_qp_file},
+#if FTR_ENABLE_FIXED_QINDEX_OFFSETS
+    {SINGLE_INPUT, USE_FIXED_QINDEX_OFFSETS_TOKEN,
+     "Use fixed QIndex offset",
+     set_cfg_use_fixed_qindex_offsets},
+     {SINGLE_INPUT, KEY_FRAME_QINDEX_OFFSET_TOKEN,
+     "Key Frame QIndex Offset",
+     set_cfg_key_frame_qindex_offset},
+     {SINGLE_INPUT, KEY_FRAME_CHROMA_QINDEX_OFFSET_TOKEN,
+     "Key Frame Chroma QIndex Offset",
+     set_cfg_key_frame_chroma_qindex_offset},
+     {SINGLE_INPUT, QINDEX_OFFSETS_TOKEN,
+     "QIndexOffsets",
+     set_cfg_qindex_offsets},
+     {SINGLE_INPUT, CHROMA_QINDEX_OFFSETS_TOKEN,
+     "ChromaQIndexOffsets",
+     set_cfg_chroma_qindex_offsets},
+#endif
     //{SINGLE_INPUT, QP_FILE_TOKEN, "Path to Qp file", set_cfg_qp_file},
     {SINGLE_INPUT, QP_FILE_NEW_TOKEN, "Path to Qp file", set_cfg_qp_file},
     {SINGLE_INPUT, MAX_QP_TOKEN, "Maximum (worst) quantizer[0-63]", set_max_qp_allowed},
@@ -838,33 +942,49 @@ ConfigEntry config_entry_rc[] = {
      "Set adaptive QP level(0: OFF ,1: variance base using segments ,2: Deltaq pred efficiency)",
      set_adaptive_quantization},
     {SINGLE_INPUT, VBV_BUFSIZE_TOKEN, "VBV buffer size", set_vbv_buf_size},
-    {SINGLE_INPUT, UNDER_SHOOT_PCT_TOKEN, "Datarate undershoot (min) target (%)", set_under_shoot_pct},
+    {SINGLE_INPUT,
+     UNDER_SHOOT_PCT_TOKEN,
+     "Datarate undershoot (min) target (%)",
+     set_under_shoot_pct},
     {SINGLE_INPUT, OVER_SHOOT_PCT_TOKEN, "Datarate overshoot (max) target (%)", set_over_shoot_pct},
+    {SINGLE_INPUT, RECODE_LOOP_TOKEN, "Recode loop levels ", set_recode_loop},
     // Termination
     {SINGLE_INPUT, NULL, NULL, NULL}};
 ConfigEntry config_entry_2p[] = {
     // 2 pass
-    {SINGLE_INPUT, PASS_TOKEN, "Multipass bitrate control (1: first pass, generates stats file , 2: second pass, uses stats file)", set_pass},
-    {SINGLE_INPUT, TWO_PASS_STATS_TOKEN, "Filename for 2 pass stats(\"svtav1_2pass.log\" : [Default])", set_two_pass_stats},
-    {SINGLE_INPUT, PASSES_TOKEN, "Number of passes (1: one pass encode, 2: two passes encode)", set_passes},
+    {SINGLE_INPUT,
+     PASS_TOKEN,
+     "Multipass bitrate control (1: first pass, generates stats file , 2: second pass, uses stats "
+     "file)",
+     set_pass},
+    {SINGLE_INPUT,
+     TWO_PASS_STATS_TOKEN,
+     "Filename for 2 pass stats(\"svtav1_2pass.log\" : [Default])",
+     set_two_pass_stats},
+    {SINGLE_INPUT,
+     PASSES_TOKEN,
+     "Number of passes (1: one pass encode, 2: two passes encode)",
+     set_passes},
     {SINGLE_INPUT, VBR_BIAS_PCT_TOKEN, "CBR/VBR bias (0=CBR, 100=VBR)", set_vbr_bias_pct},
-    {SINGLE_INPUT, VBR_MIN_SECTION_PCT_TOKEN, "GOP min bitrate (% of target)", set_vbr_min_section_pct},
-    {SINGLE_INPUT, VBR_MAX_SECTION_PCT_TOKEN, "GOP max bitrate (% of target)", set_vbr_max_section_pct},
+    {SINGLE_INPUT,
+     VBR_MIN_SECTION_PCT_TOKEN,
+     "GOP min bitrate (% of target)",
+     set_vbr_min_section_pct},
+    {SINGLE_INPUT,
+     VBR_MAX_SECTION_PCT_TOKEN,
+     "GOP max bitrate (% of target)",
+     set_vbr_max_section_pct},
     // Termination
     {SINGLE_INPUT, NULL, NULL, NULL}};
 ConfigEntry config_entry_intra_refresh[] = {
-    // File I/O
-    //{SINGLE_INPUT,
-    // INTRA_PERIOD_TOKEN,
-    //"Intra period interval(frames) (-2: No intra update, -1: default intra period or [0-255])",
-    // set_cfg_intra_period},
     {SINGLE_INPUT,
      KEYINT_TOKEN,
-     "Intra period interval(frames) (-2: default intra period , -1: No intra update or [0-255])",
+     "Intra period interval(frames) (-2: default intra period , -1: No intra update or [0 - "
+     "2^31-2]; [-2-255] if RateControlMode >= 1)",
      set_cfg_intra_period},
     {SINGLE_INPUT,
      INTRA_REFRESH_TYPE_TOKEN,
-     "Intra refresh type (1: CRA (Open GOP)2: IDR (Closed GOP))",
+     "Intra refresh type (1: CRA (Open GOP), 2: IDR (Closed GOP)[default])",
      set_tile_row},
     // Termination
     {SINGLE_INPUT, NULL, NULL, NULL}};
@@ -891,7 +1011,7 @@ ConfigEntry config_entry_specific[] = {
      "Disable loop filter(0: loop filter enabled[default] ,1: loop filter disabled)",
      set_disable_dlf_flag},
     // CDEF
-     {SINGLE_INPUT,
+    {SINGLE_INPUT,
      CDEF_LEVEL_TOKEN,
      "CDEF Level, 0: OFF, 1-5: ON with 64,16,8,4,1 step refinement, -1: DEFAULT",
      set_cdef_level},
@@ -913,13 +1033,11 @@ ConfigEntry config_entry_specific[] = {
      MRP_LEVEL_TOKEN,
      "Multi reference frame levels( 0: OFF, 1: FULL, 2: Level1 .. 9: Level8,  -1: DEFAULT)",
      set_mrp_level},
-    {SINGLE_INPUT, LOOK_AHEAD_DIST_TOKEN,
-    "Set look ahead distance",
-    set_look_ahead_distance},
+    {SINGLE_INPUT, LOOK_AHEAD_DIST_TOKEN, "Set look ahead distance", set_look_ahead_distance},
     {SINGLE_INPUT,
-    ENABLE_TPL_LA_TOKEN,
-    "RDO based on frame temporal dependency (0: off, 1: backward source based)",
-    set_enable_tpl_la},
+     ENABLE_TPL_LA_TOKEN,
+     "RDO based on frame temporal dependency (0: off, 1: backward source based)",
+     set_enable_tpl_la},
     {SINGLE_INPUT,
      MFMV_ENABLE_NEW_TOKEN,
      "Enable motion field motion vector( 0: OFF, 1: ON, -1: DEFAULT)",
@@ -929,10 +1047,10 @@ ConfigEntry config_entry_specific[] = {
      "Use the same md results(mode, residual , cost,etc..)as the previously processed identical "
      "block(0: OFF, 1: ON, -1: DEFAULT)",
      set_enable_redundant_blk_flag},
-     {SINGLE_INPUT,
-      SPATIAL_SSE_FL_NEW_TOKEN,
-      "Enable spatial sse full loop(0: OFF, 1: ON, -1: DEFAULT)",
-      set_spatial_sse_full_loop_level_flag},
+    {SINGLE_INPUT,
+     SPATIAL_SSE_FL_NEW_TOKEN,
+     "Enable spatial sse full loop(0: OFF, 1: ON, -1: DEFAULT)",
+     set_spatial_sse_full_loop_level_flag},
     {SINGLE_INPUT,
      OVR_BNDRY_BLK_NEW_TOKEN,
      "Enable over boundary block mode (0: OFF, 1: ON, -1: DEFAULT)",
@@ -988,12 +1106,12 @@ ConfigEntry config_entry_specific[] = {
      "Enable smooth (0: OFF, 1: ON, -1: DEFAULT)",
      set_enable_smooth_flag},
     // OBMC
-     {SINGLE_INPUT, OBMC_TOKEN, "OBMC Level(0: OFF, 1: Fully ON, 2 and 3 are faster levels, -1: DEFAULT)", set_obmc_level_flag},
-    // RDOQ
     {SINGLE_INPUT,
-     RDOQ_NEW_TOKEN,
-     "Enable RDOQ (0: OFF, 1: ON, -1: DEFAULT)",
-     set_rdoq_level_flag},
+     OBMC_TOKEN,
+     "OBMC Level(0: OFF, 1: Fully ON, 2 and 3 are faster levels, -1: DEFAULT)",
+     set_obmc_level_flag},
+    // RDOQ
+    {SINGLE_INPUT, RDOQ_NEW_TOKEN, "Enable RDOQ (0: OFF, 1: ON, -1: DEFAULT)", set_rdoq_level_flag},
 
     // Filter Intra
     {SINGLE_INPUT,
@@ -1102,10 +1220,10 @@ ConfigEntry config_entry_specific[] = {
      "Enable film grain(0: OFF[default], 1-50: ON, film-grain denoising strength)",
      set_cfg_film_grain},
     // --- start: ALTREF_FILTERING_SUPPORT
-     {SINGLE_INPUT,
-      TF_LEVEL,
-      "Set altref level(-1: Default; 0: OFF; 1: ON; 2 and 3: Faster levels)",
-      set_tf_level},
+    {SINGLE_INPUT,
+     TF_LEVEL,
+     "Set altref level(-1: Default; 0: OFF; 1: ON; 2 and 3: Faster levels)",
+     set_tf_level},
     {SINGLE_INPUT,
      ALTREF_STRENGTH,
      "AltRef filter strength([0-6], default: 5)",
@@ -1181,6 +1299,13 @@ ConfigEntry config_entry[] = {
      set_scene_change_detection},
     {SINGLE_INPUT, QP_TOKEN, "QP", set_cfg_qp},
     {SINGLE_INPUT, USE_QP_FILE_TOKEN, "UseQpFile", set_cfg_use_qp_file},
+#if FTR_ENABLE_FIXED_QINDEX_OFFSETS
+    {SINGLE_INPUT, USE_FIXED_QINDEX_OFFSETS_TOKEN, "UseFixedQIndexOffsets", set_cfg_use_fixed_qindex_offsets},
+    {SINGLE_INPUT, KEY_FRAME_QINDEX_OFFSET_TOKEN, "KeyFrameQIndexOffset", set_cfg_key_frame_qindex_offset},
+    {SINGLE_INPUT, KEY_FRAME_CHROMA_QINDEX_OFFSET_TOKEN, "KeyFrameChromaQIndexOffset", set_cfg_key_frame_chroma_qindex_offset},
+    {SINGLE_INPUT, QINDEX_OFFSETS_TOKEN, "QIndexOffsets", set_cfg_qindex_offsets},
+    {SINGLE_INPUT, CHROMA_QINDEX_OFFSETS_TOKEN, "ChromaQIndexOffsets", set_cfg_chroma_qindex_offsets},
+#endif
     {SINGLE_INPUT, STAT_REPORT_TOKEN, "StatReport", set_stat_report},
     {SINGLE_INPUT, RATE_CONTROL_ENABLE_TOKEN, "RateControlMode", set_rate_control_mode},
     {SINGLE_INPUT, LOOK_AHEAD_DIST_TOKEN, "LookAheadDistance", set_look_ahead_distance},
@@ -1191,10 +1316,20 @@ ConfigEntry config_entry[] = {
     {SINGLE_INPUT, VBV_BUFSIZE_TOKEN, "VBVBufSize", set_vbv_buf_size},
     {SINGLE_INPUT, ADAPTIVE_QP_ENABLE_TOKEN, "AdaptiveQuantization", set_adaptive_quantization},
     {SINGLE_INPUT, VBR_BIAS_PCT_TOKEN, "CBR/VBR bias (0=CBR, 100=VBR)", set_vbr_bias_pct},
-    {SINGLE_INPUT, VBR_MIN_SECTION_PCT_TOKEN, "GOP min bitrate (% of target)", set_vbr_min_section_pct},
-    {SINGLE_INPUT, VBR_MAX_SECTION_PCT_TOKEN, "GOP max bitrate (% of target)", set_vbr_max_section_pct},
-    {SINGLE_INPUT, UNDER_SHOOT_PCT_TOKEN, "Datarate undershoot (min) target (%)", set_under_shoot_pct},
+    {SINGLE_INPUT,
+     VBR_MIN_SECTION_PCT_TOKEN,
+     "GOP min bitrate (% of target)",
+     set_vbr_min_section_pct},
+    {SINGLE_INPUT,
+     VBR_MAX_SECTION_PCT_TOKEN,
+     "GOP max bitrate (% of target)",
+     set_vbr_max_section_pct},
+    {SINGLE_INPUT,
+     UNDER_SHOOT_PCT_TOKEN,
+     "Datarate undershoot (min) target (%)",
+     set_under_shoot_pct},
     {SINGLE_INPUT, OVER_SHOOT_PCT_TOKEN, "Datarate overshoot (max) target (%)", set_over_shoot_pct},
+    {SINGLE_INPUT, RECODE_LOOP_TOKEN, "Recode loop levels ", set_recode_loop},
 
     // DLF
     {SINGLE_INPUT, LOOP_FILTER_DISABLE_TOKEN, "LoopFilterDisable", set_disable_dlf_flag},
@@ -1318,7 +1453,8 @@ ConfigEntry config_entry[] = {
     {SINGLE_INPUT, INPUT_DEPTH_TOKEN, "Bit depth for codec(8 or 10)", set_encoder_bit_depth},
     {SINGLE_INPUT,
      KEYINT_TOKEN,
-     "Intra period interval(frames) (-2: No intra update, -1: default intra period or [0-255])",
+     "Intra period interval(frames) (-2: default intra period, -1: No intra update or [0 - "
+     "2^31-2]; [-2 - 255] if RateControlMode>=1)",
      set_cfg_intra_period},
     {SINGLE_INPUT,
      LOOKAHEAD_NEW_TOKEN,
@@ -1337,7 +1473,10 @@ ConfigEntry config_entry[] = {
     //{SINGLE_INPUT, FRAC_SEARCH_64_NEW_TOKEN, "FracSearch64", ??}, // todo
     {SINGLE_INPUT, MFMV_ENABLE_NEW_TOKEN, "Mfmv token with double dash", set_enable_mfmv_flag},
     {SINGLE_INPUT, REDUNDANT_BLK_NEW_TOKEN, "Redundant Block", set_enable_redundant_blk_flag},
-    {SINGLE_INPUT, SPATIAL_SSE_FL_NEW_TOKEN, "Spatial SSE fl", set_spatial_sse_full_loop_level_flag},
+    {SINGLE_INPUT,
+     SPATIAL_SSE_FL_NEW_TOKEN,
+     "Spatial SSE fl",
+     set_spatial_sse_full_loop_level_flag},
     {SINGLE_INPUT, OVR_BNDRY_BLK_NEW_TOKEN, "Over Boundry Block", set_over_bndry_blk_flag},
     {SINGLE_INPUT,
      NEW_NEAREST_COMB_INJECT_NEW_TOKEN,
@@ -1389,134 +1528,30 @@ ConfigEntry config_entry[] = {
 /**********************************
  * Constructor
  **********************************/
-void eb_2pass_config_update(EbConfig *config_ptr) {
-    if (config_ptr->pass == ENCODE_FIRST_PASS || config_ptr->output_stat_file) {
-        config_ptr->enc_mode = MAX_ENC_PRESET;
-        config_ptr->look_ahead_distance = 1;
-        config_ptr->enable_tpl_la = 0;
-        config_ptr->rate_control_mode = 0;
-        config_ptr->intra_refresh_type     = 2;
+EbConfig *svt_config_ctor(EncodePass pass) {
+    EbConfig *config_ptr = (EbConfig *)calloc(1, sizeof(EbConfig));
+    if (!config_ptr)
+        return NULL;
+
+    switch (pass) {
+    case ENCODE_FIRST_PASS: config_ptr->pass = 1; break;
+    case ENCODE_LAST_PASS: config_ptr->pass = 2; break;
+    default: config_ptr->pass = DEFAULT;
     }
-    else if (config_ptr->pass == ENCODE_LAST_PASS || config_ptr->input_stat_file) {
-        config_ptr->look_ahead_distance = 16;
-        config_ptr->enable_tpl_la = 1;
-        config_ptr->intra_refresh_type     = 2;
-    }
-    return;
-}
-void eb_config_ctor(EbConfig *config_ptr) {
-    memset(config_ptr, 0, sizeof(*config_ptr));
-    config_ptr->error_log_file         = stderr;
-    config_ptr->frame_rate             = 30 << 16;
-    config_ptr->encoder_bit_depth      = 8;
-    config_ptr->is_16bit_pipeline = 0;
-    config_ptr->encoder_color_format   = 1; //EB_YUV420
-    config_ptr->buffered_input         = -1;
-    config_ptr->qp                  = 50;
-    config_ptr->use_qp_file         = EB_FALSE;
-    config_ptr->look_ahead_distance = (uint32_t)~0;
-    config_ptr->enable_tpl_la       = 1;
-    config_ptr->target_bit_rate     = 7000000;
-    config_ptr->max_qp_allowed      = 63;
-    config_ptr->min_qp_allowed      = 10;
 
-    config_ptr->enable_adaptive_quantization              = 2;
-    config_ptr->enc_mode                                  = MAX_ENC_PRESET;
-    config_ptr->vbr_bias_pct        = 50;
-    config_ptr->vbr_min_section_pct = 0;
-    config_ptr->vbr_max_section_pct = 2000;
-    config_ptr->under_shoot_pct     = 25;
-    config_ptr->over_shoot_pct      = 25;
-    config_ptr->intra_period                              = -2;
-    config_ptr->intra_refresh_type                        = 1;
-    config_ptr->hierarchical_levels                       = 4;
-    config_ptr->pred_structure                            = 2;
-    config_ptr->enable_global_motion                      = EB_TRUE;
-    config_ptr->progress                                  = 1;
-    config_ptr->enable_warped_motion                      = DEFAULT;
-    config_ptr->cdef_level                                = DEFAULT;
-    config_ptr->enable_restoration_filtering              = DEFAULT;
-    config_ptr->sg_filter_mode                            = DEFAULT;
-    config_ptr->wn_filter_mode                            = DEFAULT;
-    config_ptr->intra_angle_delta                         = DEFAULT;
-    config_ptr->inter_intra_compound                      = DEFAULT;
-    config_ptr->enable_paeth                              = DEFAULT;
-    config_ptr->enable_smooth                             = DEFAULT;
-    config_ptr->mrp_level                                 = DEFAULT;
-    config_ptr->enable_mfmv                               = DEFAULT;
-    config_ptr->enable_redundant_blk                      = DEFAULT;
-    config_ptr->spatial_sse_full_loop_level               = DEFAULT;
-    config_ptr->over_bndry_blk                            = DEFAULT;
-    config_ptr->new_nearest_comb_inject                   = DEFAULT;
-    config_ptr->nsq_table                                 = DEFAULT;
-    config_ptr->frame_end_cdf_update                      = DEFAULT;
-    config_ptr->set_chroma_mode                           = DEFAULT;
-    config_ptr->disable_cfl_flag                          = DEFAULT;
-    config_ptr->obmc_level                                = DEFAULT;
-    config_ptr->rdoq_level                                = DEFAULT;
-    config_ptr->pred_me                                   = DEFAULT;
-    config_ptr->bipred_3x3_inject                         = DEFAULT;
-    config_ptr->compound_level                            = DEFAULT;
-    config_ptr->filter_intra_level                        = DEFAULT;
-    config_ptr->enable_intra_edge_filter                  = DEFAULT;
-    config_ptr->pic_based_rate_est                        = DEFAULT;
-    config_ptr->use_default_me_hme                        = EB_TRUE;
-    config_ptr->enable_hme_flag                           = EB_TRUE;
-    config_ptr->enable_hme_level0_flag                    = EB_TRUE;
-    config_ptr->search_area_width                         = 16;
-    config_ptr->search_area_height                        = 7;
-    config_ptr->number_hme_search_region_in_width         = 2;
-    config_ptr->number_hme_search_region_in_height        = 2;
-    config_ptr->hme_level0_total_search_area_width        = 64;
-    config_ptr->hme_level0_total_search_area_height       = 25;
-    config_ptr->hme_level0_search_area_in_width_array[0]  = 32;
-    config_ptr->hme_level0_search_area_in_width_array[1]  = 32;
-    config_ptr->hme_level0_search_area_in_height_array[0] = 12;
-    config_ptr->hme_level0_search_area_in_height_array[1] = 13;
-    config_ptr->hme_level1_search_area_in_width_array[0]  = 1;
-    config_ptr->hme_level1_search_area_in_width_array[1]  = 1;
-    config_ptr->hme_level1_search_area_in_height_array[0] = 1;
-    config_ptr->hme_level1_search_area_in_height_array[1] = 1;
-    config_ptr->hme_level2_search_area_in_width_array[0]  = 1;
-    config_ptr->hme_level2_search_area_in_width_array[1]  = 1;
-    config_ptr->hme_level2_search_area_in_height_array[0] = 1;
-    config_ptr->hme_level2_search_area_in_height_array[1] = 1;
-    config_ptr->screen_content_mode                       = 2;
-    config_ptr->enable_hbd_mode_decision                  = DEFAULT;
-    config_ptr->intrabc_mode                              = DEFAULT;
-    config_ptr->palette_level                             = DEFAULT;
-    config_ptr->injector_frame_rate                       = 60 << 16;
+    config_ptr->error_log_file = stderr;
+    config_ptr->buffered_input = -1;
+    config_ptr->progress       = 1;
 
-    // ASM Type
-    config_ptr->cpu_flags_limit = CPU_FLAGS_ALL;
-
-    config_ptr->unpin     = 1;
-    config_ptr->target_socket = -1;
-
-    config_ptr->unrestricted_motion_vector = EB_TRUE;
-
-    // --- start: ALTREF_FILTERING_SUPPORT
-    config_ptr->tf_level = DEFAULT;
-    config_ptr->altref_strength = 5;
-    config_ptr->altref_nframes = 13;
-    // --- end: ALTREF_FILTERING_SUPPORT
-
-    // start - super-resolution support
-    config_ptr->superres_mode     = SUPERRES_NONE; // disabled
-    config_ptr->superres_denom    = 8; // no scaling
-    config_ptr->superres_kf_denom = 8; // no scaling
-    config_ptr->superres_qthres   = 43; // random threshold for now
-    // end - super-resolution support
-
-    config_ptr->pass = DEFAULT;
-
-    return;
+    return config_ptr;
 }
 
 /**********************************
  * Destructor
  **********************************/
-void eb_config_dtor(EbConfig *config_ptr) {
+void svt_config_dtor(EbConfig *config_ptr) {
+    if (!config_ptr)
+        return;
     // Close any files that are open
     if (config_ptr->config_file) {
         fclose(config_ptr->config_file);
@@ -1524,7 +1559,8 @@ void eb_config_dtor(EbConfig *config_ptr) {
     }
 
     if (config_ptr->input_file) {
-        if (!config_ptr->input_file_is_fifo) fclose(config_ptr->input_file);
+        if (!config_ptr->input_file_is_fifo)
+            fclose(config_ptr->input_file);
         config_ptr->input_file = (FILE *)NULL;
     }
 
@@ -1562,8 +1598,36 @@ void eb_config_dtor(EbConfig *config_ptr) {
         fclose(config_ptr->stat_file);
         config_ptr->stat_file = (FILE *)NULL;
     }
-    free((void*)config_ptr->stats);
+    free((void *)config_ptr->stats);
+    free(config_ptr);
     return;
+}
+
+EbErrorType enc_channel_ctor(EncChannel *c, EncodePass pass) {
+    c->config = svt_config_ctor(pass);
+    if (!c->config)
+        return EB_ErrorInsufficientResources;
+    c->app_callback = (EbAppContext *)malloc(sizeof(EbAppContext));
+    if (!c->app_callback)
+        return EB_ErrorInsufficientResources;
+    memset(c->app_callback, 0, sizeof(EbAppContext));
+    c->exit_cond        = APP_ExitConditionError;
+    c->exit_cond_output = APP_ExitConditionError;
+    c->exit_cond_recon  = APP_ExitConditionError;
+    c->exit_cond_input  = APP_ExitConditionError;
+    c->active           = EB_FALSE;
+    return svt_av1_enc_init_handle(
+        &c->app_callback->svt_encoder_handle, c->app_callback, &c->config->config);
+}
+
+void enc_channel_dctor(EncChannel *c, uint32_t inst_cnt) {
+    EbAppContext *ctx = c->app_callback;
+    if (ctx && ctx->svt_encoder_handle) {
+        svt_av1_enc_deinit(ctx->svt_encoder_handle);
+        de_init_encoder(ctx, inst_cnt);
+    }
+    svt_config_dtor(c->config);
+    free(c->app_callback);
 }
 
 /**********************************
@@ -1622,7 +1686,7 @@ static void set_config_value(EbConfig *config, const char *name, const char *val
     int32_t i = 0;
 
     while (config_entry[i].name != NULL) {
-        if (EB_STRCMP(config_entry[i].name, name) == 0)
+        if (strcmp(config_entry[i].name, name) == 0)
             (*config_entry[i].scf)((const char *)value, config);
         ++i;
     }
@@ -1648,10 +1712,10 @@ static void parse_config_file(EbConfig *config, char *buffer, int32_t size) {
 
     // Keep looping until we process the entire file
     while (size--) {
-        comment_section_flag =
-            ((*buffer == CONFIG_FILE_COMMENT_CHAR) || (comment_section_flag != 0))
-                ? 1
-                : comment_section_flag;
+        comment_section_flag = ((*buffer == CONFIG_FILE_COMMENT_CHAR) ||
+                                (comment_section_flag != 0))
+            ? 1
+            : comment_section_flag;
 
         // At the beginning of each line
         if ((new_line_flag == 1) && (comment_section_flag == 0)) {
@@ -1664,10 +1728,10 @@ static void parse_config_file(EbConfig *config, char *buffer, int32_t size) {
 
                 // Cap the length of the variable name
                 arg_len[0] = (arg_len[0] > CONFIG_FILE_MAX_VAR_LEN - 1)
-                                 ? CONFIG_FILE_MAX_VAR_LEN - 1
-                                 : arg_len[0];
+                    ? CONFIG_FILE_MAX_VAR_LEN - 1
+                    : arg_len[0];
                 // Copy the variable name
-                EB_STRNCPY(var_name, CONFIG_FILE_MAX_VAR_LEN, argv[0], arg_len[0]);
+                strncpy_s(var_name, CONFIG_FILE_MAX_VAR_LEN, argv[0], arg_len[0]);
                 // Null terminate the variable name
                 var_name[arg_len[0]] = CONFIG_FILE_NULL_CHAR;
 
@@ -1675,15 +1739,15 @@ static void parse_config_file(EbConfig *config, char *buffer, int32_t size) {
                      (value_index < CONFIG_FILE_MAX_ARG_COUNT - 2) && (value_index < (argc - 2));
                      ++value_index) {
                     // Cap the length of the variable
-                    arg_len[value_index + 2] =
-                        (arg_len[value_index + 2] > CONFIG_FILE_MAX_VAR_LEN - 1)
-                            ? CONFIG_FILE_MAX_VAR_LEN - 1
-                            : arg_len[value_index + 2];
+                    arg_len[value_index + 2] = (arg_len[value_index + 2] >
+                                                CONFIG_FILE_MAX_VAR_LEN - 1)
+                        ? CONFIG_FILE_MAX_VAR_LEN - 1
+                        : arg_len[value_index + 2];
                     // Copy the variable name
-                    EB_STRNCPY(var_value[value_index],
-                               CONFIG_FILE_MAX_VAR_LEN,
-                               argv[value_index + 2],
-                               arg_len[value_index + 2]);
+                    strncpy_s(var_value[value_index],
+                              CONFIG_FILE_MAX_VAR_LEN,
+                              argv[value_index + 2],
+                              arg_len[value_index + 2]);
                     // Null terminate the variable name
                     var_value[value_index][arg_len[value_index + 2]] = CONFIG_FILE_NULL_CHAR;
 
@@ -1700,18 +1764,41 @@ static void parse_config_file(EbConfig *config, char *buffer, int32_t size) {
     return;
 }
 
-/******************************************
-* Find Token
-******************************************/
+/**
+ * @brief Find token and its argument
+ * @param argc      Argument count
+ * @param argv      Argument array
+ * @param token     The token to look for
+ * @param configStr Output buffer to write the argument to or NULL
+ * @return 0 if found, non-zero otherwise
+ *
+ * @note The configStr buffer must be at least
+ *       COMMAND_LINE_MAX_SIZE bytes big.
+ *       The argv must contain an additional NULL
+ *       element to terminate it, so that
+ *       argv[argc] == NULL.
+ */
 static int32_t find_token(int32_t argc, char *const argv[], char const *token, char *configStr) {
-    int32_t return_error = -1;
+    assert(argv[argc] == NULL);
 
-    while ((argc > 0) && (return_error != 0)) {
-        return_error = EB_STRCMP(argv[--argc], token);
-        if (return_error == 0) { EB_STRCPY(configStr, COMMAND_LINE_MAX_SIZE, argv[argc + 1]); }
+    if (argc == 0)
+        return -1;
+
+    for (int32_t i = argc - 1; i >= 0; i--) {
+        if (strcmp(argv[i], token) != 0)
+            continue;
+
+        // The argument matches the token.
+        // If given, try to copy its argument to configStr
+        if (configStr && argv[i + 1] != NULL) {
+            strcpy_s(configStr, COMMAND_LINE_MAX_SIZE, argv[i + 1]);
+        } else if (configStr) {
+            configStr[0] = '\0';
+        }
+
+        return 0;
     }
-
-    return return_error;
+    return -1;
 }
 
 /**********************************
@@ -1728,8 +1815,8 @@ static int32_t read_config_file(EbConfig *config, char *config_path, uint32_t in
         char *  config_file_buffer = (char *)malloc(config_file_size);
 
         if (config_file_buffer != (char *)NULL) {
-            int32_t result_size =
-                (int32_t)fread(config_file_buffer, 1, config_file_size, config->config_file);
+            int32_t result_size = (int32_t)fread(
+                config_file_buffer, 1, config_file_size, config->config_file);
 
             if (result_size == config_file_size) {
                 parse_config_file(config, config_file_buffer, config_file_size);
@@ -1757,16 +1844,16 @@ static int32_t read_config_file(EbConfig *config, char *config_path, uint32_t in
 }
 
 /* get config->rc_twopass_stats_in from config->input_stat_file */
-EbBool load_twopass_stats_in(EbConfig *config)
-{
+EbBool load_twopass_stats_in(EbConfig *cfg) {
+    EbSvtAv1EncConfiguration *config = &cfg->config;
 #ifdef _WIN32
-    int fd = _fileno(config->input_stat_file);
+    int          fd = _fileno(cfg->input_stat_file);
     struct _stat file_stat;
-    int ret = _fstat(fd, &file_stat);
+    int          ret = _fstat(fd, &file_stat);
 #else
-    int fd = fileno(config->input_stat_file);
+    int         fd = fileno(cfg->input_stat_file);
     struct stat file_stat;
-    int ret = fstat(fd, &file_stat);
+    int         ret = fstat(fd, &file_stat);
 #endif
     if (ret) {
         return EB_FALSE;
@@ -1774,8 +1861,8 @@ EbBool load_twopass_stats_in(EbConfig *config)
     config->rc_twopass_stats_in.buf = malloc(file_stat.st_size);
     if (config->rc_twopass_stats_in.buf) {
         config->rc_twopass_stats_in.sz = (uint64_t)file_stat.st_size;
-        if (fread(config->rc_twopass_stats_in.buf, 1, file_stat.st_size,
-            config->input_stat_file) != (size_t)file_stat.st_size) {
+        if (fread(config->rc_twopass_stats_in.buf, 1, file_stat.st_size, cfg->input_stat_file) !=
+            (size_t)file_stat.st_size) {
             return EB_FALSE;
         }
     }
@@ -1785,63 +1872,67 @@ EbBool load_twopass_stats_in(EbConfig *config)
 /* set two passes stats information to EbConfig
  */
 EbErrorType set_two_passes_stats(EbConfig *config, EncodePass pass,
-    const SvtAv1FixedBuf* rc_twopass_stats_in, uint32_t channel_number)
-{
+                                 const SvtAv1FixedBuf *rc_twopass_stats_in,
+                                 uint32_t              channel_number) {
     switch (pass) {
-        case ENCODE_SINGLE_PASS: {
-            const char* stats = config->stats ? config->stats : "svtav1_2pass.log";
-            if (config->pass == 1) {
-                if (!fopen_and_lock(&config->output_stat_file, stats, EB_TRUE)) {
-                    fprintf(config->error_log_file,
-                        "Error instance %u: can't open stats file %s for write \n",
-                        channel_number + 1, stats);
-                    return EB_ErrorBadParameter;
-                }
-                config->rc_firstpass_stats_out = EB_TRUE;
-            } else if (config->pass == 2) {
-                if (!fopen_and_lock(&config->input_stat_file, stats, EB_FALSE)) {
-                    fprintf(config->error_log_file,
-                        "Error instance %u: can't read stats file %s for read\n",
-                        channel_number + 1, stats);
-                    return EB_ErrorBadParameter;
-                }
-                if (!load_twopass_stats_in(config)) {
-                    fprintf(config->error_log_file,
-                        "Error instance %u: can't load file %s\n",
-                        channel_number + 1, stats);
-                    return EB_ErrorBadParameter;
-                }
-            }
-            break;
-        }
-        case ENCODE_FIRST_PASS: {
-            // for combined two passes,
-            // we only ouptut first pass stats when user explicitly set the --stats
-            if (config->stats) {
-                if (!fopen_and_lock(&config->output_stat_file, config->stats, EB_TRUE)) {
-                    fprintf(config->error_log_file,
-                        "Error instance %u: can't open stats file %s for write \n",
-                        channel_number + 1, config->stats);
-                    return EB_ErrorBadParameter;
-                }
-            }
-            config->rc_firstpass_stats_out = EB_TRUE;
-            break;
-        }
-        case ENCODE_LAST_PASS: {
-            if (!rc_twopass_stats_in->sz) {
+    case ENCODE_SINGLE_PASS: {
+        const char *stats = config->stats ? config->stats : "svtav1_2pass.log";
+        if (config->pass == 1) {
+            if (!fopen_and_lock(&config->output_stat_file, stats, EB_TRUE)) {
                 fprintf(config->error_log_file,
-                        "Error instance %u: bug, combined 2passes need stats in for second pass \n",
-                        channel_number + 1);
+                        "Error instance %u: can't open stats file %s for write \n",
+                        channel_number + 1,
+                        stats);
                 return EB_ErrorBadParameter;
             }
-            config->rc_twopass_stats_in = *rc_twopass_stats_in;
-            break;
+            config->config.rc_firstpass_stats_out = EB_TRUE;
+        } else if (config->pass == 2) {
+            if (!fopen_and_lock(&config->input_stat_file, stats, EB_FALSE)) {
+                fprintf(config->error_log_file,
+                        "Error instance %u: can't read stats file %s for read\n",
+                        channel_number + 1,
+                        stats);
+                return EB_ErrorBadParameter;
+            }
+            if (!load_twopass_stats_in(config)) {
+                fprintf(config->error_log_file,
+                        "Error instance %u: can't load file %s\n",
+                        channel_number + 1,
+                        stats);
+                return EB_ErrorBadParameter;
+            }
         }
-        default: {
-            assert(0);
-            break;
+        break;
+    }
+    case ENCODE_FIRST_PASS: {
+        // for combined two passes,
+        // we only ouptut first pass stats when user explicitly set the --stats
+        if (config->stats) {
+            if (!fopen_and_lock(&config->output_stat_file, config->stats, EB_TRUE)) {
+                fprintf(config->error_log_file,
+                        "Error instance %u: can't open stats file %s for write \n",
+                        channel_number + 1,
+                        config->stats);
+                return EB_ErrorBadParameter;
+            }
         }
+        config->config.rc_firstpass_stats_out = EB_TRUE;
+        break;
+    }
+    case ENCODE_LAST_PASS: {
+        if (!rc_twopass_stats_in->sz) {
+            fprintf(config->error_log_file,
+                    "Error instance %u: bug, combined 2passes need stats in for second pass \n",
+                    channel_number + 1);
+            return EB_ErrorBadParameter;
+        }
+        config->config.rc_twopass_stats_in = *rc_twopass_stats_in;
+        break;
+    }
+    default: {
+        assert(0);
+        break;
+    }
     }
     return EB_ErrorNone;
 }
@@ -1882,14 +1973,14 @@ static EbErrorType verify_settings(EbConfig *config, uint32_t channel_number) {
         return_error = EB_ErrorBadParameter;
     }
 
-    if (config->use_qp_file == EB_TRUE && config->qp_file == NULL) {
+    if (config->config.use_qp_file == EB_TRUE && config->qp_file == NULL) {
         fprintf(config->error_log_file,
                 "Error instance %u: Could not find QP file, UseQpFile is set to 1\n",
                 channel_number + 1);
         return_error = EB_ErrorBadParameter;
     }
 
-    if (config->encoder_color_format != 1) {
+    if (config->config.encoder_color_format != 1) {
         fprintf(config->error_log_file,
                 "Error instance %u: Only support 420 now \n",
                 channel_number + 1);
@@ -1917,11 +2008,12 @@ static EbErrorType verify_settings(EbConfig *config, uint32_t channel_number) {
     }
 
     // target_socket
-    if (config->target_socket != -1 && config->target_socket != 0 && config->target_socket != 1) {
+    if (config->config.target_socket != -1 && config->config.target_socket != 0 &&
+        config->config.target_socket != 1) {
         fprintf(config->error_log_file,
                 "Error instance %u: Invalid target_socket [-1 - 1], your input: %d\n",
                 channel_number + 1,
-                config->target_socket);
+                config->config.target_socket);
         return_error = EB_ErrorBadParameter;
     }
 
@@ -1936,40 +2028,46 @@ static EbErrorType verify_settings(EbConfig *config, uint32_t channel_number) {
     if (pass != 2 && pass != 1 && pass != DEFAULT) {
         fprintf(config->error_log_file,
                 "Error instance %u: %d pass encode is not supported\n",
-                channel_number + 1, config->pass);
+                channel_number + 1,
+                config->pass);
         return EB_ErrorBadParameter;
     }
 
-    if (pass != DEFAULT  && (config->input_stat_file || config->output_stat_file)) {
-        fprintf(config->error_log_file,
-                "Error instance %u: --pass can't work with -input-stat-file or -output-stat-file \n",
-                channel_number + 1);
+    if (pass != DEFAULT && (config->input_stat_file || config->output_stat_file)) {
+        fprintf(
+            config->error_log_file,
+            "Error instance %u: --pass can't work with -input-stat-file or -output-stat-file \n",
+            channel_number + 1);
         return EB_ErrorBadParameter;
     }
 
-    if ((pass != DEFAULT || config->input_stat_file || config->output_stat_file) && channel_number > 0) {
+    if ((pass != DEFAULT || config->input_stat_file || config->output_stat_file) &&
+        channel_number > 0) {
         fprintf(config->error_log_file,
                 "Error instance %u: 2 pass encode for multi instance is not supported\n",
                 channel_number + 1);
         return EB_ErrorBadParameter;
     }
     if (pass != DEFAULT || config->input_stat_file || config->output_stat_file) {
-        if (config->hierarchical_levels != 4) {
-            fprintf(config->error_log_file,
+        if (config->config.hierarchical_levels > 4) {
+            fprintf(
+                config->error_log_file,
                 "Error instance %u: 2 pass encode for hierarchical_levels %u is not supported\n",
-                channel_number + 1, config->hierarchical_levels);
+                channel_number + 1,
+                config->config.hierarchical_levels);
             return EB_ErrorBadParameter;
         }
-        if (config->enable_overlays) {
+        if (config->config.enable_overlays) {
             fprintf(config->error_log_file,
-                "Error instance %u: 2 pass encode for overlays is not supported\n",
-                channel_number + 1);
+                    "Error instance %u: 2 pass encode for overlays is not supported\n",
+                    channel_number + 1);
             return EB_ErrorBadParameter;
         }
-        if (config->intra_refresh_type != 2) {
+        if (config->config.intra_refresh_type != 2) {
             fprintf(config->error_log_file,
-                "Error instance %u: 2 pass encode for intra_refresh_type %u is not supported\n",
-                channel_number + 1,config->intra_refresh_type);
+                    "Error instance %u: 2 pass encode for intra_refresh_type %u is not supported\n",
+                    channel_number + 1,
+                    config->config.intra_refresh_type);
             return EB_ErrorBadParameter;
         }
     }
@@ -1984,29 +2082,29 @@ int32_t find_token_multiple_inputs(int32_t argc, char *const argv[], const char 
     int32_t return_error = -1;
     int32_t done         = 0;
     while ((argc > 0) && (return_error != 0)) {
-        return_error = EB_STRCMP(argv[--argc], token);
+        return_error = strcmp(argv[--argc], token);
         if (return_error == 0) {
             for (unsigned count = 0; count < MAX_CHANNEL_NUMBER; ++count) {
                 if (done == 0) {
                     if (argv[argc + count + 1]) {
                         if (strtoul(argv[argc + count + 1], NULL, 0) != 0 ||
-                            EB_STRCMP(argv[argc + count + 1], "0") == 0) {
-                            EB_STRCPY(
+                            strcmp(argv[argc + count + 1], "0") == 0) {
+                            strcpy_s(
                                 configStr[count], COMMAND_LINE_MAX_SIZE, argv[argc + count + 1]);
                         } else if (argv[argc + count + 1][0] != '-') {
-                            EB_STRCPY(
+                            strcpy_s(
                                 configStr[count], COMMAND_LINE_MAX_SIZE, argv[argc + count + 1]);
                         } else {
-                            EB_STRCPY(configStr[count], COMMAND_LINE_MAX_SIZE, " ");
+                            strcpy_s(configStr[count], COMMAND_LINE_MAX_SIZE, " ");
                             done = 1;
                         }
                     } else {
-                        EB_STRCPY(configStr[count], COMMAND_LINE_MAX_SIZE, " ");
+                        strcpy_s(configStr[count], COMMAND_LINE_MAX_SIZE, " ");
                         done = 1;
                         //return return_error;
                     }
                 } else
-                    EB_STRCPY(configStr[count], COMMAND_LINE_MAX_SIZE, " ");
+                    strcpy_s(configStr[count], COMMAND_LINE_MAX_SIZE, " ");
             }
         }
     }
@@ -2014,162 +2112,134 @@ int32_t find_token_multiple_inputs(int32_t argc, char *const argv[], const char 
     return return_error;
 }
 
-uint32_t check_long(ConfigEntry cfg_entry, ConfigEntry cfg_entry_next) {
-    if (cfg_entry_next.name == NULL) { return 0; }
-    if (EB_STRCMP(cfg_entry.name, cfg_entry_next.name) == 0) { return 1; }
-    return 0;
+static int check_long(ConfigEntry cfg_entry, ConfigEntry cfg_entry_next) {
+    return cfg_entry_next.name ? !strcmp(cfg_entry.name, cfg_entry_next.name) : 0;
 }
 
 uint32_t get_help(int32_t argc, char *const argv[]) {
     char config_string[COMMAND_LINE_MAX_SIZE];
-    if (find_token(argc, argv, HELP_TOKEN, config_string) == 0 ||
-        find_token(argc, argv, HELP_LONG_TOKEN, config_string) == 0) {
-        int32_t options_token_index        = -1;
-        int32_t global_options_token_index = -1;
-        int32_t rc_token_index             = -1;
-        int32_t two_p_token_index          = -1;
-        int32_t kf_token_index             = -1;
-        int32_t sp_token_index             = -1;
-        //fprintf(stderr, "\n%-25s\t%-25s\n", "TOKEN", "DESCRIPTION");
-        //fprintf(stderr, "%-25s\t%-25s\n", "-nch", "NumberOfChannels");
-        const char *empty_string         = "";
-        fprintf(stderr,
-                "Usage: SvtAv1EncApp <options> -b dst_filename -i src_filename\n");
-        fprintf(stderr, "\n%-25s\n", "Examples:");
-        fprintf(stderr, "\n%-25s", "Two passes encode:");
-        fprintf(stderr, "\n\t%s", "SvtAv1EncApp <--stats svtav1_2pass.log> --pass 1 -b dst_filename -i src_filename");
-        fprintf(stderr, "\n\t%s", "SvtAv1EncApp <--stats svtav1_2pass.log> --pass 2 -b dst_filename -i src_filename");
-        fprintf(stderr, "\n    Or a combined cli:");
-        fprintf(stderr, "\n\t%s\n", "SvtAv1EncApp <--stats svtav1_2pass.log> --passes 2 -b dst_filename -i src_filename");
-        fprintf(stderr, "\n%-25s\n", "Options:");
-        while (config_entry_options[++options_token_index].token != NULL) {
-            uint32_t check = check_long(
-                config_entry_options[options_token_index],
-                config_entry_options
-                    [options_token_index +
-                     1]); // this only works if short and long token are one after another
-            if (check == 1) {
-                fprintf(stderr,
-                        "\t%-5s\t%-25s\t%-25s\n",
-                        config_entry_options[options_token_index].token,
-                        config_entry_options[options_token_index + 1].token,
-                        config_entry_options[options_token_index].name);
-                options_token_index++;
-            } else
-                fprintf(stderr,
-                        *(config_entry_options[options_token_index].token + 1) == '-'
-                            ? "\t%-5s\t%-25s\t%-25s\n"
-                            : "\t%-5s\t-%-25s\t%-25s\n",
-                        empty_string,
-                        config_entry_options[options_token_index].token,
-                        config_entry_options[options_token_index].name);
-        }
-        fprintf(stderr, "\n%-25s\n", "Encoder Global Options:");
-        while (config_entry_global_options[++global_options_token_index].token != NULL) {
-            uint32_t check =
-                check_long(config_entry_global_options[global_options_token_index],
-                           config_entry_global_options[global_options_token_index + 1]);
-            if (check == 1) {
-                fprintf(stderr,
-                        "\t%-5s\t%-25s\t%-25s\n",
-                        config_entry_global_options[global_options_token_index].token,
-                        config_entry_global_options[global_options_token_index + 1].token,
-                        config_entry_global_options[global_options_token_index].name);
-                global_options_token_index++;
-            } else {
-                fprintf(stderr,
-                        *(config_entry_global_options[global_options_token_index].token + 1) == '-'
-                            ? "\t%-5s\t%-25s\t%-25s\n"
-                            : "\t%-5s\t-%-25s\t%-25s\n",
-                        empty_string,
-                        config_entry_global_options[global_options_token_index].token,
-                        config_entry_global_options[global_options_token_index].name);
-            }
-        }
-        fprintf(stderr, "\n%-25s\n", "Rate Control Options:");
-        while (config_entry_rc[++rc_token_index].token != NULL) {
-            uint32_t check =
-                check_long(config_entry_rc[rc_token_index], config_entry_rc[rc_token_index + 1]);
-            if (check == 1) {
-                fprintf(stderr,
-                        "\t%-5s\t%-25s\t%-25s\n",
-                        config_entry_rc[rc_token_index].token,
-                        config_entry_rc[rc_token_index + 1].token,
-                        config_entry_rc[rc_token_index].name);
-                rc_token_index++;
-            } else {
-                fprintf(stderr,
-                        *(config_entry_rc[rc_token_index].token + 1) == '-'
-                            ? "\t%-5s\t%-25s\t%-25s\n"
-                            : "\t%-5s\t-%-25s\t%-25s\n",
-                        empty_string,
-                        config_entry_rc[rc_token_index].token,
-                        config_entry_rc[rc_token_index].name);
-            }
-        }
-        fprintf(stderr, "\n%-25s\n", "Twopass Options:");
-        while (config_entry_2p[++two_p_token_index].token != NULL) {
-            uint32_t check = check_long(config_entry_2p[two_p_token_index],
-                                        config_entry_2p[two_p_token_index + 1]);
-            if (check == 1) {
-                fprintf(stderr,
-                        "\t%-5s\t%-25s\t%-25s\n",
-                        config_entry_2p[two_p_token_index].token,
-                        config_entry_2p[two_p_token_index + 1].token,
-                        config_entry_2p[two_p_token_index].name);
-                two_p_token_index++;
-            } else
-                fprintf(stderr,
-                        *(config_entry_2p[two_p_token_index].token + 1) == '-'
-                            ? "\t%-5s\t%-25s\t%-25s\n"
-                            : "\t%-5s\t-%-25s\t%-25s\n",
-                        empty_string,
-                        config_entry_2p[two_p_token_index].token,
-                        config_entry_2p[two_p_token_index].name);
-        }
-        fprintf(stderr, "\n%-25s\n", "Keyframe Placement Options:");
-        while (config_entry_intra_refresh[++kf_token_index].token != NULL) {
-            uint32_t check = check_long(config_entry_intra_refresh[kf_token_index],
-                                        config_entry_intra_refresh[kf_token_index + 1]);
-            if (check == 1) {
-                fprintf(stderr,
-                        "\t%-5s\t%-25s\t%-25s\n",
-                        config_entry_intra_refresh[kf_token_index].token,
-                        config_entry_intra_refresh[kf_token_index + 1].token,
-                        config_entry_intra_refresh[kf_token_index].name);
-                kf_token_index++;
-            } else
-                fprintf(stderr,
-                        *(config_entry_intra_refresh[kf_token_index].token + 1) == '-'
-                            ? "\t%-5s\t%-25s\t%-25s\n"
-                            : "\t%-5s\t-%-25s\t%-25s\n",
-                        empty_string,
-                        config_entry_intra_refresh[kf_token_index].token,
-                        config_entry_intra_refresh[kf_token_index].name);
-        }
-        fprintf(stderr, "\n%-25s\n", "AV1 Specific Options:");
-        while (config_entry_specific[++sp_token_index].token != NULL) {
-            uint32_t check = check_long(config_entry_specific[sp_token_index],
-                                        config_entry_specific[sp_token_index + 1]);
-            if (check == 1) {
-                fprintf(stderr,
-                        "\t%-5s\t%-25s\t%-25s\n",
-                        config_entry_specific[sp_token_index].token,
-                        config_entry_specific[sp_token_index + 1].token,
-                        config_entry_specific[sp_token_index].name);
-                sp_token_index++;
-            } else
-                fprintf(stderr,
-                        *(config_entry_specific[sp_token_index].token + 1) == '-'
-                            ? "\t%-5s\t%-25s\t%-25s\n"
-                            : "\t%-5s\t-%-25s\t%-25s\n",
-                        empty_string,
-                        config_entry_specific[sp_token_index].token,
-                        config_entry_specific[sp_token_index].name);
-        }
-        return 1;
-    } else
+    if (find_token(argc, argv, HELP_TOKEN, config_string) &&
+        find_token(argc, argv, HELP_LONG_TOKEN, config_string))
         return 0;
+
+    printf(
+        "Usage: SvtAv1EncApp <options> -b dst_filename -i src_filename\n\n"
+        "Examples:\n"
+        "Two passes encode:\n"
+        "    SvtAv1EncApp <--stats svtav1_2pass.log> --pass 1 -b dst_filename -i src_filename\n"
+        "    SvtAv1EncApp <--stats svtav1_2pass.log> --pass 2 -b dst_filename -i src_filename\n"
+        "Or a combined cli:\n"
+        "    SvtAv1EncApp <--stats svtav1_2pass.log> --passes 2 -b dst_filename -i src_filename\n"
+        "\nOptions:\n");
+    for (ConfigEntry *options_token_index = config_entry_options; options_token_index->token;
+         ++options_token_index) {
+        // this only works if short and long token are one after another
+        switch (check_long(*options_token_index, options_token_index[1])) {
+        case 1:
+            printf("  %s, %-25s    %-25s\n",
+                   options_token_index->token,
+                   options_token_index[1].token,
+                   options_token_index->name);
+            ++options_token_index;
+            break;
+        default:
+            printf(options_token_index->token[1] == '-' ? "      %-25s    %-25s\n"
+                                                        : "      -%-25s   %-25s\n",
+                   options_token_index->token,
+                   options_token_index->name);
+        }
+    }
+    printf("\nEncoder Global Options:\n");
+    for (ConfigEntry *global_options_token_index = config_entry_global_options;
+         global_options_token_index->token;
+         ++global_options_token_index) {
+        switch (check_long(*global_options_token_index, global_options_token_index[1])) {
+        case 1:
+            printf("  %s, %-25s    %-25s\n",
+                   global_options_token_index->token,
+                   global_options_token_index[1].token,
+                   global_options_token_index->name);
+            ++global_options_token_index;
+            break;
+        default:
+            printf(global_options_token_index->token[1] == '-' ? "      %-25s    %-25s\n"
+                                                               : "      -%-25s   %-25s\n",
+                   global_options_token_index->token,
+                   global_options_token_index->name);
+        }
+    }
+    printf("\nRate Control Options:\n");
+    for (ConfigEntry *rc_token_index = config_entry_rc; rc_token_index->token; ++rc_token_index) {
+        switch (check_long(*rc_token_index, rc_token_index[1])) {
+        case 1:
+            printf("  %s, %-25s    %-25s\n",
+                   rc_token_index->token,
+                   rc_token_index[1].token,
+                   rc_token_index->name);
+            ++rc_token_index;
+            break;
+        default:
+            printf(rc_token_index->token[1] == '-' ? "      %-25s    %-25s\n"
+                                                   : "      -%-25s   %-25s\n",
+                   rc_token_index->token,
+                   rc_token_index->name);
+        }
+    }
+    printf("\nTwopass Options:\n");
+    for (ConfigEntry *two_p_token_index = config_entry_2p; two_p_token_index->token;
+         ++two_p_token_index) {
+        switch (check_long(*two_p_token_index, two_p_token_index[1])) {
+        case 1:
+            printf("  %s, %-25s    %-25s\n",
+                   two_p_token_index->token,
+                   two_p_token_index[1].token,
+                   two_p_token_index->name);
+            ++two_p_token_index;
+            break;
+        default:
+            printf(two_p_token_index->token[1] == '-' ? "      %-25s    %-25s\n"
+                                                      : "      -%-25s   %-25s\n",
+                   two_p_token_index->token,
+                   two_p_token_index->name);
+        }
+    }
+    printf("\nKeyframe Placement Options:\n");
+    for (ConfigEntry *kf_token_index = config_entry_intra_refresh; kf_token_index->token;
+         ++kf_token_index) {
+        switch (check_long(*kf_token_index, kf_token_index[1])) {
+        case 1:
+            printf("  %s, %-25s    %-25s\n",
+                   kf_token_index->token,
+                   kf_token_index[1].token,
+                   kf_token_index->name);
+            ++kf_token_index;
+            break;
+        default:
+            printf(kf_token_index->token[1] == '-' ? "      %-25s    %-25s\n"
+                                                   : "      -%-25s   %-25s\n",
+                   kf_token_index->token,
+                   kf_token_index->name);
+        }
+    }
+    printf("\nAV1 Specific Options:\n");
+    for (ConfigEntry *sp_token_index = config_entry_specific; sp_token_index->token;
+         ++sp_token_index) {
+        switch (check_long(*sp_token_index, sp_token_index[1])) {
+        case 1:
+            printf("  %s, %-25s    %-25s\n",
+                   sp_token_index->token,
+                   sp_token_index[1].token,
+                   sp_token_index->name);
+            ++sp_token_index;
+            break;
+        default:
+            printf(sp_token_index->token[1] == '-' ? "      %-25s    %-25s\n"
+                                                   : "      -%-25s   %-25s\n",
+                   sp_token_index->token,
+                   sp_token_index->name);
+        }
+    }
+    return 1;
 }
 
 /******************************************************
@@ -2191,21 +2261,19 @@ uint32_t get_number_of_channels(int32_t argc, char *const argv[]) {
     return 1;
 }
 
-static EbBool check_two_pass_conflicts(int32_t argc, char *const argv[])
-{
-    char     config_string[COMMAND_LINE_MAX_SIZE];
-    const char* conflicts[] = {
+static EbBool check_two_pass_conflicts(int32_t argc, char *const argv[]) {
+    char        config_string[COMMAND_LINE_MAX_SIZE];
+    const char *conflicts[] = {
         PASS_TOKEN,
         INPUT_STAT_FILE_TOKEN,
         OUTPUT_STAT_FILE_TOKEN,
         NULL,
     };
-    int i = 0;
-    const char* token;
+    int         i = 0;
+    const char *token;
     while ((token = conflicts[i])) {
         if (find_token(argc, argv, token, config_string) == 0) {
-            fprintf(stderr,
-                "--passes 2 conflicts with %s\n", token);
+            fprintf(stderr, "--passes 2 conflicts with %s\n", token);
             return EB_TRUE;
         }
         i++;
@@ -2223,8 +2291,8 @@ uint32_t get_passes(int32_t argc, char *const argv[], EncodePass pass[MAX_ENCODE
     passes = strtol(config_string, NULL, 0);
     if (passes == 0 || passes > 2) {
         fprintf(stderr,
-            "Error: The number of passes has to be within the range [1,%u]\n",
-            (uint32_t)MAX_ENCODE_PASS);
+                "Error: The number of passes has to be within the range [1,%u]\n",
+                (uint32_t)MAX_ENCODE_PASS);
         return 0;
     }
     if (passes == 1) {
@@ -2233,16 +2301,18 @@ uint32_t get_passes(int32_t argc, char *const argv[], EncodePass pass[MAX_ENCODE
     }
 
     int preset = MAX_ENC_PRESET;
-    if (find_token(argc, argv, PRESET_TOKEN, config_string) == 0
-        || find_token(argc, argv, ENCMODE_TOKEN, config_string) == 0) {
+    if (find_token(argc, argv, PRESET_TOKEN, config_string) == 0 ||
+        find_token(argc, argv, ENCMODE_TOKEN, config_string) == 0) {
         preset = strtol(config_string, NULL, 0);
     }
     int rc_mode = 0;
-    if (find_token(argc, argv, RATE_CONTROL_ENABLE_TOKEN, config_string) == 0 )
+    if (find_token(argc, argv, RATE_CONTROL_ENABLE_TOKEN, config_string) == 0 ||
+        find_token(argc, argv, "--rc", config_string) == 0)
         rc_mode = strtol(config_string, NULL, 0);
 
     if (preset > 3 && rc_mode == 0) {
-        fprintf(stderr,
+        fprintf(
+            stderr,
             "\nWarn: --passes 2 CRF for preset > 3 is not supported yet, force single pass\n\n");
         pass[0] = ENCODE_SINGLE_PASS;
         return 1;
@@ -2258,7 +2328,7 @@ uint32_t get_passes(int32_t argc, char *const argv[], EncodePass pass[MAX_ENCODE
 void mark_token_as_read(const char *token, char *cmd_copy[], int32_t *cmd_token_cnt) {
     int32_t cmd_copy_index;
     for (cmd_copy_index = 0; cmd_copy_index < *(cmd_token_cnt); ++cmd_copy_index) {
-        if (!EB_STRCMP(cmd_copy[cmd_copy_index], token))
+        if (!strcmp(cmd_copy[cmd_copy_index], token))
             cmd_copy[cmd_copy_index] = cmd_copy[--(*cmd_token_cnt)];
     }
 }
@@ -2266,9 +2336,11 @@ void mark_token_as_read(const char *token, char *cmd_copy[], int32_t *cmd_token_
 EbBool is_negative_number(const char *string) {
     int32_t length = (int32_t)strlen(string);
     int32_t index  = 0;
-    if (string[0] != '-') return EB_FALSE;
+    if (string[0] != '-')
+        return EB_FALSE;
     for (index = 1; index < length; index++) {
-        if (string[index] < '0' || string[index] > '9') return EB_FALSE;
+        if (string[index] < '0' || string[index] > '9')
+            return EB_FALSE;
     }
     return EB_TRUE;
 }
@@ -2281,7 +2353,8 @@ int32_t compute_frames_to_be_encoded(EbConfig *config) {
 
     // Pipes contain data streams whose end we cannot know before we reach it.
     // For pipes, we leave it up to the eof logic to detect how many frames to eventually encode.
-    if (config->input_file == stdin || config->input_file_is_fifo) return -1;
+    if (config->input_file == stdin || config->input_file_is_fifo)
+        return -1;
 
     if (config->input_file) {
         uint64_t curr_loc = ftello(config->input_file); // get current fp location
@@ -2291,17 +2364,19 @@ int32_t compute_frames_to_be_encoded(EbConfig *config) {
     }
 
     frame_size = config->input_padded_width * config->input_padded_height; // Luma
-    frame_size += 2 * (frame_size >> (3 - config->encoder_color_format)); // Add Chroma
-    frame_size = frame_size << ((config->encoder_bit_depth == 10) ? 1 : 0);
+    frame_size += 2 * (frame_size >> (3 - config->config.encoder_color_format)); // Add Chroma
+    frame_size = frame_size << ((config->config.encoder_bit_depth == 10) ? 1 : 0);
 
-    if (frame_size == 0) return -1;
+    if (frame_size == 0)
+        return -1;
 
-    if (config->encoder_bit_depth == 10 && config->compressed_ten_bit_format == 1)
+    if (config->config.encoder_bit_depth == 10 && config->config.compressed_ten_bit_format == 1)
         frame_count = (int32_t)(2 * ((double)file_size / frame_size) / 1.25);
     else
         frame_count = (int32_t)(file_size / frame_size);
 
-    if (frame_count == 0) return -1;
+    if (frame_count == 0)
+        return -1;
 
     return frame_count;
 }
@@ -2319,18 +2394,18 @@ static int32_t parse_pred_struct_file(EbConfig *config, char *buffer, int32_t si
 
     uint32_t value_index;
 
-    uint32_t comment_section_flag = 0;
-    uint32_t new_line_flag        = 0;
-    int32_t  entry_num            = 0;
-    int32_t  display_order = 0, num_ref_list0 = 0, num_ref_list1 = 0;
-    int32_t  idx_ref_list0 = 0, idx_ref_list1 = 0;
-
+    uint32_t                  comment_section_flag = 0;
+    uint32_t                  new_line_flag        = 0;
+    int32_t                   entry_num            = 0;
+    int32_t                   display_order = 0, num_ref_list0 = 0, num_ref_list1 = 0;
+    int32_t                   idx_ref_list0 = 0, idx_ref_list1 = 0;
+    EbSvtAv1EncConfiguration *cfg = &config->config;
     // Keep looping until we process the entire file
     while (size--) {
-        comment_section_flag =
-            ((*buffer == CONFIG_FILE_COMMENT_CHAR) || (comment_section_flag != 0))
-                ? 1
-                : comment_section_flag;
+        comment_section_flag = ((*buffer == CONFIG_FILE_COMMENT_CHAR) ||
+                                (comment_section_flag != 0))
+            ? 1
+            : comment_section_flag;
 
         // At the beginning of each line
         if ((new_line_flag == 1) && (comment_section_flag == 0)) {
@@ -2343,13 +2418,15 @@ static int32_t parse_pred_struct_file(EbConfig *config, char *buffer, int32_t si
 
                 // Cap the length of the variable name
                 arg_len[0] = (arg_len[0] > CONFIG_FILE_MAX_VAR_LEN - 1)
-                                 ? CONFIG_FILE_MAX_VAR_LEN - 1
-                                 : arg_len[0];
+                    ? CONFIG_FILE_MAX_VAR_LEN - 1
+                    : arg_len[0];
                 // Copy the variable name
-                EB_STRNCPY(var_name, CONFIG_FILE_MAX_VAR_LEN, argv[0], arg_len[0]);
+                strncpy_s(var_name, CONFIG_FILE_MAX_VAR_LEN, argv[0], arg_len[0]);
                 // Null terminate the variable name
                 var_name[arg_len[0]] = CONFIG_FILE_NULL_CHAR;
-                if (EB_STRCMP(var_name, "PredStructEntry")) { continue; }
+                if (strcmp(var_name, "PredStructEntry")) {
+                    continue;
+                }
 
                 ++entry_num;
                 idx_ref_list0 = idx_ref_list1 = num_ref_list0 = num_ref_list1 = 0;
@@ -2358,48 +2435,50 @@ static int32_t parse_pred_struct_file(EbConfig *config, char *buffer, int32_t si
                      (value_index < CONFIG_FILE_MAX_ARG_COUNT - 2) && (value_index < (argc - 2));
                      ++value_index) {
                     // Cap the length of the variable
-                    arg_len[value_index + 2] =
-                        (arg_len[value_index + 2] > CONFIG_FILE_MAX_VAR_LEN - 1)
-                            ? CONFIG_FILE_MAX_VAR_LEN - 1
-                            : arg_len[value_index + 2];
+                    arg_len[value_index + 2] = (arg_len[value_index + 2] >
+                                                CONFIG_FILE_MAX_VAR_LEN - 1)
+                        ? CONFIG_FILE_MAX_VAR_LEN - 1
+                        : arg_len[value_index + 2];
                     // Copy the variable name
-                    EB_STRNCPY(var_value[value_index],
-                               CONFIG_FILE_MAX_VAR_LEN,
-                               argv[value_index + 2],
-                               arg_len[value_index + 2]);
+                    strncpy_s(var_value[value_index],
+                              CONFIG_FILE_MAX_VAR_LEN,
+                              argv[value_index + 2],
+                              arg_len[value_index + 2]);
                     // Null terminate the variable name
                     var_value[value_index][arg_len[value_index + 2]] = CONFIG_FILE_NULL_CHAR;
 
                     switch (value_index) {
                     case 0:
                         display_order = strtoul(var_value[value_index], NULL, 0);
-                        if (display_order >= (1 << (MAX_HIERARCHICAL_LEVEL - 1))) { return -1; }
+                        if (display_order >= (1 << (MAX_HIERARCHICAL_LEVEL - 1))) {
+                            return -1;
+                        }
                         break;
                     case 1:
-                        config->pred_struct[display_order].decode_order =
-                            strtoul(var_value[value_index], NULL, 0);
-                        if (config->pred_struct[display_order].decode_order >=
+                        cfg->pred_struct[display_order].decode_order = strtoul(
+                            var_value[value_index], NULL, 0);
+                        if (cfg->pred_struct[display_order].decode_order >=
                             (1 << (MAX_HIERARCHICAL_LEVEL - 1))) {
                             return -1;
                         }
                         break;
                     case 2:
-                        config->pred_struct[display_order].temporal_layer_index =
-                            strtoul(var_value[value_index], NULL, 0);
+                        cfg->pred_struct[display_order].temporal_layer_index = strtoul(
+                            var_value[value_index], NULL, 0);
                         break;
                     case 3: num_ref_list0 = strtoul(var_value[value_index], NULL, 0); break;
                     case 4: num_ref_list1 = strtoul(var_value[value_index], NULL, 0); break;
                     default:
                         if (idx_ref_list0 < num_ref_list0) {
                             if (idx_ref_list0 < REF_LIST_MAX_DEPTH) {
-                                config->pred_struct[display_order].ref_list0[idx_ref_list0] =
-                                    strtoul(var_value[value_index], NULL, 0);
+                                cfg->pred_struct[display_order].ref_list0[idx_ref_list0] = strtoul(
+                                    var_value[value_index], NULL, 0);
                             }
                             ++idx_ref_list0;
                         } else if (idx_ref_list1 < num_ref_list1) {
                             if (idx_ref_list1 < REF_LIST_MAX_DEPTH - 1) {
-                                config->pred_struct[display_order].ref_list1[idx_ref_list1] =
-                                    strtoul(var_value[value_index], NULL, 0);
+                                cfg->pred_struct[display_order].ref_list1[idx_ref_list1] = strtoul(
+                                    var_value[value_index], NULL, 0);
                             }
                             ++idx_ref_list1;
                         }
@@ -2407,10 +2486,10 @@ static int32_t parse_pred_struct_file(EbConfig *config, char *buffer, int32_t si
                     }
                 }
                 for (; num_ref_list0 < REF_LIST_MAX_DEPTH; ++num_ref_list0) {
-                    config->pred_struct[display_order].ref_list0[num_ref_list0] = 0;
+                    cfg->pred_struct[display_order].ref_list0[num_ref_list0] = 0;
                 }
                 for (; num_ref_list1 < REF_LIST_MAX_DEPTH - 1; ++num_ref_list1) {
-                    config->pred_struct[display_order].ref_list1[num_ref_list1] = 0;
+                    cfg->pred_struct[display_order].ref_list1[num_ref_list1] = 0;
                 }
             }
         }
@@ -2419,7 +2498,7 @@ static int32_t parse_pred_struct_file(EbConfig *config, char *buffer, int32_t si
         new_line_flag        = (*buffer == CONFIG_FILE_NEWLINE_CHAR) ? 1 : 0;
         ++buffer;
     }
-    config->manual_pred_struct_entry_num = entry_num;
+    cfg->manual_pred_struct_entry_num = entry_num;
 
     return 0;
 }
@@ -2481,57 +2560,80 @@ EbErrorType handle_short_tokens(char *string) {
 const char *handle_warnings(const char *token, char *print_message, uint8_t double_dash_token) {
     const char *linked_token = "";
 
-    if (EB_STRCMP(token, ENCMODE_TOKEN) == 0) linked_token = PRESET_TOKEN;
-    if (EB_STRCMP(token, ENCODER_BIT_DEPTH) == 0) linked_token = INPUT_DEPTH_TOKEN;
-    if (EB_STRCMP(token, INTRA_PERIOD_TOKEN) == 0) linked_token = KEYINT_TOKEN;
-    if (EB_STRCMP(token, QP_FILE_TOKEN) == 0) linked_token = QP_FILE_NEW_TOKEN;
-    if (EB_STRCMP(token, LOOK_AHEAD_DIST_TOKEN) == 0) linked_token = LOOKAHEAD_NEW_TOKEN;
+    if (strcmp(token, ENCMODE_TOKEN) == 0)
+        linked_token = PRESET_TOKEN;
+    if (strcmp(token, ENCODER_BIT_DEPTH) == 0)
+        linked_token = INPUT_DEPTH_TOKEN;
+    if (strcmp(token, INTRA_PERIOD_TOKEN) == 0)
+        linked_token = KEYINT_TOKEN;
+    if (strcmp(token, QP_FILE_TOKEN) == 0)
+        linked_token = QP_FILE_NEW_TOKEN;
+    if (strcmp(token, LOOK_AHEAD_DIST_TOKEN) == 0)
+        linked_token = LOOKAHEAD_NEW_TOKEN;
 
-    if (EB_STRCMP(token, STAT_REPORT_TOKEN) == 0) linked_token = STAT_REPORT_NEW_TOKEN;
-    if (EB_STRCMP(token, RESTORATION_ENABLE_TOKEN) == 0)
+    if (strcmp(token, STAT_REPORT_TOKEN) == 0)
+        linked_token = STAT_REPORT_NEW_TOKEN;
+    if (strcmp(token, RESTORATION_ENABLE_TOKEN) == 0)
         linked_token = RESTORATION_ENABLE_NEW_TOKEN;
-    if (EB_STRCMP(token, INTER_INTRA_COMPOUND_TOKEN) == 0)
+    if (strcmp(token, INTER_INTRA_COMPOUND_TOKEN) == 0)
         linked_token = INTER_INTRA_COMPOUND_NEW_TOKEN;
-    if (EB_STRCMP(token, MFMV_ENABLE_TOKEN) == 0) linked_token = MFMV_ENABLE_NEW_TOKEN;
-    if (EB_STRCMP(token, REDUNDANT_BLK_TOKEN) == 0) linked_token = REDUNDANT_BLK_NEW_TOKEN;
-    if (EB_STRCMP(token, SPATIAL_SSE_FL_TOKEN) == 0) linked_token = SPATIAL_SSE_FL_NEW_TOKEN;
-    if (EB_STRCMP(token, OVR_BNDRY_BLK_TOKEN) == 0) linked_token = OVR_BNDRY_BLK_NEW_TOKEN;
-    if (EB_STRCMP(token, NEW_NEAREST_COMB_INJECT_TOKEN) == 0)
+    if (strcmp(token, MFMV_ENABLE_TOKEN) == 0)
+        linked_token = MFMV_ENABLE_NEW_TOKEN;
+    if (strcmp(token, REDUNDANT_BLK_TOKEN) == 0)
+        linked_token = REDUNDANT_BLK_NEW_TOKEN;
+    if (strcmp(token, SPATIAL_SSE_FL_TOKEN) == 0)
+        linked_token = SPATIAL_SSE_FL_NEW_TOKEN;
+    if (strcmp(token, OVR_BNDRY_BLK_TOKEN) == 0)
+        linked_token = OVR_BNDRY_BLK_NEW_TOKEN;
+    if (strcmp(token, NEW_NEAREST_COMB_INJECT_TOKEN) == 0)
         linked_token = NEW_NEAREST_COMB_INJECT_NEW_TOKEN;
-    if (EB_STRCMP(token, NSQ_TABLE_TOKEN) == 0) linked_token = NSQ_TABLE_NEW_TOKEN;
-    if (EB_STRCMP(token, FRAME_END_CDF_UPDATE_TOKEN) == 0)
+    if (strcmp(token, NSQ_TABLE_TOKEN) == 0)
+        linked_token = NSQ_TABLE_NEW_TOKEN;
+    if (strcmp(token, FRAME_END_CDF_UPDATE_TOKEN) == 0)
         linked_token = FRAME_END_CDF_UPDATE_NEW_TOKEN;
-    if (EB_STRCMP(token, LOCAL_WARPED_ENABLE_TOKEN) == 0)
+    if (strcmp(token, LOCAL_WARPED_ENABLE_TOKEN) == 0)
         linked_token = LOCAL_WARPED_ENABLE_NEW_TOKEN;
-    if (EB_STRCMP(token, GLOBAL_MOTION_ENABLE_TOKEN) == 0)
+    if (strcmp(token, GLOBAL_MOTION_ENABLE_TOKEN) == 0)
         linked_token = GLOBAL_MOTION_ENABLE_NEW_TOKEN;
-    if (EB_STRCMP(token, RDOQ_TOKEN) == 0) linked_token = RDOQ_NEW_TOKEN;
-    if (EB_STRCMP(token, FILTER_INTRA_TOKEN) == 0) linked_token = FILTER_INTRA_NEW_TOKEN;
-    if (EB_STRCMP(token, HDR_INPUT_TOKEN) == 0) linked_token = HDR_INPUT_NEW_TOKEN;
-    if (EB_STRCMP(token, ADAPTIVE_QP_ENABLE_TOKEN) == 0)
+    if (strcmp(token, RDOQ_TOKEN) == 0)
+        linked_token = RDOQ_NEW_TOKEN;
+    if (strcmp(token, FILTER_INTRA_TOKEN) == 0)
+        linked_token = FILTER_INTRA_NEW_TOKEN;
+    if (strcmp(token, HDR_INPUT_TOKEN) == 0)
+        linked_token = HDR_INPUT_NEW_TOKEN;
+    if (strcmp(token, ADAPTIVE_QP_ENABLE_TOKEN) == 0)
         linked_token = ADAPTIVE_QP_ENABLE_NEW_TOKEN;
 
-    if (EB_STRCMP(token, DISABLE_CFL_TOKEN) == 0) linked_token = DISABLE_CFL_NEW_TOKEN;
-    if (EB_STRCMP(token, INTRA_EDGE_FILTER_TOKEN) == 0) linked_token = INTRA_EDGE_FILTER_NEW_TOKEN;
-    if (EB_STRCMP(token, INTRA_ANGLE_DELTA_TOKEN) == 0) linked_token = INTRA_ANGLE_DELTA_NEW_TOKEN;
-    if (EB_STRCMP(token, PAETH_TOKEN) == 0) linked_token = PAETH_NEW_TOKEN;
-    if (EB_STRCMP(token, SMOOTH_TOKEN) == 0) linked_token = SMOOTH_NEW_TOKEN;
-    if (EB_STRCMP(token, PIC_BASED_RATE_EST_TOKEN) == 0) linked_token = PIC_BASED_RATE_EST_NEW_TOKEN;
+    if (strcmp(token, DISABLE_CFL_TOKEN) == 0)
+        linked_token = DISABLE_CFL_NEW_TOKEN;
+    if (strcmp(token, INTRA_EDGE_FILTER_TOKEN) == 0)
+        linked_token = INTRA_EDGE_FILTER_NEW_TOKEN;
+    if (strcmp(token, INTRA_ANGLE_DELTA_TOKEN) == 0)
+        linked_token = INTRA_ANGLE_DELTA_NEW_TOKEN;
+    if (strcmp(token, PAETH_TOKEN) == 0)
+        linked_token = PAETH_NEW_TOKEN;
+    if (strcmp(token, SMOOTH_TOKEN) == 0)
+        linked_token = SMOOTH_NEW_TOKEN;
+    if (strcmp(token, PIC_BASED_RATE_EST_TOKEN) == 0)
+        linked_token = PIC_BASED_RATE_EST_NEW_TOKEN;
 
-    if (EB_STRLEN(linked_token, WARNING_LENGTH) > 1) {
+    if (strnlen_s(linked_token, WARNING_LENGTH) > 1) {
         const char *message_str = " will be deprecated soon, please use ";
-        EB_STRCPY(print_message, WARNING_LENGTH, token);
-        EB_STRCPY(
-            print_message + EB_STRLEN(print_message, WARNING_LENGTH), WARNING_LENGTH, message_str);
-        EB_STRCPY(
-            print_message + EB_STRLEN(print_message, WARNING_LENGTH), WARNING_LENGTH, linked_token);
+        size_t      offset;
+        strcpy_s(print_message, WARNING_LENGTH, token);
+        offset = strnlen_s(print_message, WARNING_LENGTH);
+        strcpy_s(print_message + offset, WARNING_LENGTH - offset, message_str);
+        offset = strnlen_s(print_message, WARNING_LENGTH);
+        strcpy_s(print_message + offset, WARNING_LENGTH - offset, linked_token);
         return print_message;
     } else if (double_dash_token == 0) {
         const char *message_str = " will be deprecated soon, please use -";
-        EB_STRCPY(print_message, WARNING_LENGTH, token);
-        EB_STRCPY(
-            print_message + EB_STRLEN(print_message, WARNING_LENGTH), WARNING_LENGTH, message_str);
-        EB_STRCPY(print_message + EB_STRLEN(print_message, WARNING_LENGTH), WARNING_LENGTH, token);
+        size_t      offset;
+        strcpy_s(print_message, WARNING_LENGTH, token);
+        offset = strnlen_s(print_message, WARNING_LENGTH);
+        strcpy_s(print_message + offset, WARNING_LENGTH - offset, message_str);
+        offset = strnlen_s(print_message, WARNING_LENGTH);
+        strcpy_s(print_message + offset, WARNING_LENGTH - offset, token);
         return print_message;
     }
     return "";
@@ -2540,10 +2642,9 @@ const char *handle_warnings(const char *token, char *print_message, uint8_t doub
 /******************************************
 * Read Command Line
 ******************************************/
-EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **configs,
-                              uint32_t num_channels, EbErrorType *return_errors,
-                              char *warning_str[WARNING_LENGTH]) {
-    EbErrorType return_error = EB_ErrorBadParameter;
+EbErrorType read_command_line(int32_t argc, char *const argv[], EncChannel *channels,
+                              uint32_t num_channels, char *warning_str[WARNING_LENGTH]) {
+    EbErrorType return_error = EB_ErrorNone;
     char        config_string[COMMAND_LINE_MAX_SIZE]; // for one input options
     char *      config_strings[MAX_CHANNEL_NUMBER]; // for multiple input options
     char *      cmd_copy[MAX_NUM_TOKENS]; // keep track of extra tokens
@@ -2559,8 +2660,7 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
     for (token_index = 0; token_index < argc; ++token_index) {
         if ((argv[token_index][0] == '-') &&
             strncmp(argv[token_index], CHANNEL_NUMBER_TOKEN, len) &&
-            strncmp(argv[token_index], PASSES_TOKEN, len) &&
-            !is_negative_number(argv[token_index]))
+            strncmp(argv[token_index], PASSES_TOKEN, len) && !is_negative_number(argv[token_index]))
             cmd_copy[cmd_token_cnt++] = argv[token_index];
     }
 
@@ -2573,18 +2673,20 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
         mark_token_as_read(CONFIG_FILE_TOKEN, cmd_copy, &cmd_token_cnt);
         // Parse the config file
         for (index = 0; index < num_channels; ++index) {
-            return_errors[index] =
-                (EbErrorType)read_config_file(configs[index], config_strings[index], index);
-            return_error = (EbErrorType)(return_error & return_errors[index]);
+            EncChannel *c   = channels + index;
+            c->return_error = (EbErrorType)read_config_file(
+                c->config, config_strings[index], index);
+            return_error = (EbErrorType)(return_error & c->return_error);
         }
     } else if (find_token_multiple_inputs(argc, argv, CONFIG_FILE_LONG_TOKEN, config_strings) ==
                0) {
         mark_token_as_read(CONFIG_FILE_LONG_TOKEN, cmd_copy, &cmd_token_cnt);
         // Parse the config file
         for (index = 0; index < num_channels; ++index) {
-            return_errors[index] =
-                (EbErrorType)read_config_file(configs[index], config_strings[index], index);
-            return_error = (EbErrorType)(return_error & return_errors[index]);
+            EncChannel *c   = channels + index;
+            c->return_error = (EbErrorType)read_config_file(
+                c->config, config_strings[index], index);
+            return_error = (EbErrorType)(return_error & c->return_error);
         }
     } else {
         if (find_token(argc, argv, CONFIG_FILE_TOKEN, config_string) == 0) {
@@ -2606,7 +2708,7 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
             char message[WARNING_LENGTH] = "";
             // concat strings with '-'
             char concat_str[WARNING_LENGTH] = "-";
-            EB_STRCPY(concat_str + 1, sizeof(concat_str), config_entry[token_index].token);
+            strcpy_s(concat_str + 1, sizeof(concat_str) - 1, config_entry[token_index].token);
             if (find_token_multiple_inputs(
                     argc, argv, config_entry[token_index].token, config_strings) == 0) {
                 //Warning for one dash
@@ -2614,15 +2716,16 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
                     *(config_entry[token_index].token + 1) != '-' && // check for --
                     return_result_error != EB_ErrorBadParameter) {
                     handle_warnings(config_entry[token_index].token, message, 0);
-                    EB_STRCPY(warning_str[++warning_index], WARNING_LENGTH, message);
+                    strcpy_s(warning_str[++warning_index], WARNING_LENGTH, message);
                 }
                 // When a token is found mark it as found in the temp token buffer
                 mark_token_as_read(config_entry[token_index].token, cmd_copy, &cmd_token_cnt);
 
                 // Fill up the values corresponding to each channel
                 for (index = 0; index < num_channels; ++index) {
-                    if (EB_STRCMP(config_strings[index], " "))
-                        (*config_entry[token_index].scf)(config_strings[index], configs[index]);
+                    EncChannel *c = channels + index;
+                    if (strcmp(config_strings[index], " "))
+                        (*config_entry[token_index].scf)(config_strings[index], c->config);
                     else
                         break;
                 }
@@ -2630,11 +2733,10 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
                        0) { // handle double dash
                 handle_warnings(config_entry[token_index].token, message, 1);
                 // handle warnings for new tokens
-                if (EB_STRLEN(message, sizeof(message) > 1)) {
+                if (strnlen_s(message, sizeof(message) > 1)) {
                     char double_dash_warning[WARNING_LENGTH] = "-";
-                    EB_STRCPY(double_dash_warning + 1,
-                              sizeof(double_dash_warning), message);
-                    EB_STRCPY(warning_str[++warning_index], WARNING_LENGTH, double_dash_warning);
+                    strcpy_s(double_dash_warning + 1, sizeof(double_dash_warning), message);
+                    strcpy_s(warning_str[++warning_index], WARNING_LENGTH, double_dash_warning);
                     warning_index++;
                 }
                 return_result_error = handle_short_tokens(concat_str);
@@ -2643,15 +2745,17 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
 
                 // Fill up the values corresponding to each channel
                 for (index = 0; index < num_channels; ++index) {
-                    if (EB_STRCMP(config_strings[index], " "))
-                        (*config_entry[token_index].scf)(config_strings[index], configs[index]);
+                    EncChannel *c = channels + index;
+                    if (strcmp(config_strings[index], " "))
+                        (*config_entry[token_index].scf)(config_strings[index], c->config);
                     else
                         break;
                 }
             }
         }
     }
-    if (return_result_error == EB_ErrorBadParameter) return EB_ErrorBadParameter;
+    if (return_result_error == EB_ErrorBadParameter)
+        return EB_ErrorBadParameter;
 
     /***************************************************************************************************/
     /********************** Parse parameters from input file if in y4m format **************************/
@@ -2659,8 +2763,9 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
     /***************************************************************************************************/
 
     for (index = 0; index < num_channels; ++index) {
-        if ((configs[index])->y4m_input == EB_TRUE) {
-            ret_y4m = read_y4m_header(configs[index]);
+        EncChannel *c = channels + index;
+        if (c->config->y4m_input == EB_TRUE) {
+            ret_y4m = read_y4m_header(c->config);
             if (ret_y4m == EB_ErrorBadParameter) {
                 fprintf(stderr, "Error found when reading the y4m file parameters.\n");
                 return EB_ErrorBadParameter;
@@ -2671,10 +2776,12 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
     /*******************************   Parse manual prediction structure  ******************************/
     /***************************************************************************************************/
     for (index = 0; index < num_channels; ++index) {
-        if ((configs[index])->enable_manual_pred_struct == EB_TRUE) {
-            return_errors[index] = (EbErrorType)read_pred_struct_file(
-                configs[index], configs[index]->input_pred_struct_filename, index);
-            return_error = (EbErrorType)(return_error & return_errors[index]);
+        EncChannel *c      = channels + index;
+        EbConfig *  config = c->config;
+        if (config->config.enable_manual_pred_struct == EB_TRUE) {
+            c->return_error = (EbErrorType)read_pred_struct_file(
+                config, config->input_pred_struct_filename, index);
+            return_error = (EbErrorType)(return_error & c->return_error);
         }
     }
     /***************************************************************************************************/
@@ -2684,36 +2791,35 @@ EbErrorType read_command_line(int32_t argc, char *const argv[], EbConfig **confi
     if (return_error == 0) {
         return_error = EB_ErrorBadParameter;
         for (index = 0; index < num_channels; ++index) {
-            if (return_errors[index] == EB_ErrorNone) {
-                return_errors[index] = verify_settings(configs[index], index);
+            EncChannel *c = channels + index;
+            if (c->return_error == EB_ErrorNone) {
+                EbConfig *config = c->config;
+                c->return_error  = verify_settings(config, index);
 
                 // Assuming no errors, add padding to width and height
-                if (return_errors[index] == EB_ErrorNone) {
-                    configs[index]->input_padded_width = configs[index]->source_width;
-                    configs[index]->input_padded_height = configs[index]->source_height;
+                if (c->return_error == EB_ErrorNone) {
+                    config->input_padded_width  = config->config.source_width;
+                    config->input_padded_height = config->config.source_height;
                 }
 
                 // Assuming no errors, set the frames to be encoded to the number of frames in the input yuv
-                if (return_errors[index] == EB_ErrorNone &&
-                    configs[index]->frames_to_be_encoded == 0)
-                    configs[index]->frames_to_be_encoded =
-                        compute_frames_to_be_encoded(configs[index]);
+                if (c->return_error == EB_ErrorNone && config->frames_to_be_encoded == 0)
+                    config->frames_to_be_encoded = compute_frames_to_be_encoded(config);
 
                 // For pipe input it is fine if we have -1 here (we will update on end of stream)
-                if (configs[index]->frames_to_be_encoded == -1
-                    && configs[index]->input_file != stdin
-                    && !configs[index]->input_file_is_fifo) {
-                    fprintf(configs[index]->error_log_file,
+                if (config->frames_to_be_encoded == -1 && config->input_file != stdin &&
+                    !config->input_file_is_fifo) {
+                    fprintf(config->error_log_file,
                             "Error instance %u: Input yuv does not contain enough frames \n",
                             index + 1);
-                    return_errors[index] = EB_ErrorBadParameter;
+                    c->return_error = EB_ErrorBadParameter;
                 }
 
                 // Force the injector latency mode, and injector frame rate when speed control is on
-                if (return_errors[index] == EB_ErrorNone && configs[index]->speed_control_flag == 1)
-                    configs[index]->injector = 1;
+                if (c->return_error == EB_ErrorNone && config->speed_control_flag == 1)
+                    config->injector = 1;
             }
-            return_error = (EbErrorType)(return_error & return_errors[index]);
+            return_error = (EbErrorType)(return_error & c->return_error);
         }
     }
 

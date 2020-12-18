@@ -306,16 +306,16 @@ static AOM_FORCE_INLINE void calc_ab(int32_t *A, int32_t *b, const int32_t *C, c
                 const __m256i a_res = _mm256_i32gather_epi32(eb_x_by_xplus1, z, 4);
                 yy_storeu_256(A + j, a_res);
 
-                const __m256i a_complement =
-                    _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR), a_res);
+                const __m256i a_complement = _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR),
+                                                              a_res);
 
                 // sum1 might have lanes greater than 2^15, so we can't use madd to do
                 // multiplication involving sum1. However, a_complement and one_over_n
                 // are both less than 256, so we can multiply them first.
                 const __m256i a_comp_over_n = _mm256_madd_epi16(a_complement, one_over_n);
                 const __m256i b_int         = _mm256_mullo_epi32(a_comp_over_n, sum1);
-                const __m256i b_res =
-                    _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res), SGRPROJ_RECIP_BITS);
+                const __m256i b_res         = _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res),
+                                                        SGRPROJ_RECIP_BITS);
                 yy_storeu_256(b + j, b_res);
                 j += 8;
             } while (j < width + 2);
@@ -339,16 +339,16 @@ static AOM_FORCE_INLINE void calc_ab(int32_t *A, int32_t *b, const int32_t *C, c
                 const __m256i a_res = _mm256_i32gather_epi32(eb_x_by_xplus1, z, 4);
                 yy_storeu_256(A + j, a_res);
 
-                const __m256i a_complement =
-                    _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR), a_res);
+                const __m256i a_complement = _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR),
+                                                              a_res);
 
                 // sum1 might have lanes greater than 2^15, so we can't use madd to do
                 // multiplication involving sum1. However, a_complement and one_over_n
                 // are both less than 256, so we can multiply them first.
                 const __m256i a_comp_over_n = _mm256_madd_epi16(a_complement, one_over_n);
                 const __m256i b_int         = _mm256_mullo_epi32(a_comp_over_n, sum1);
-                const __m256i b_res =
-                    _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res), SGRPROJ_RECIP_BITS);
+                const __m256i b_res         = _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res),
+                                                        SGRPROJ_RECIP_BITS);
                 yy_storeu_256(b + j, b_res);
                 j += 8;
             } while (j < width + 2);
@@ -388,8 +388,8 @@ static INLINE __m256i cross_sum(const int32_t *buf, int32_t stride) {
     const __m256i xb  = yy_loadu_256(buf + stride);
     const __m256i xbr = yy_loadu_256(buf + 1 + stride);
 
-    const __m256i fours =
-        _mm256_add_epi32(xl, _mm256_add_epi32(xt, _mm256_add_epi32(xr, _mm256_add_epi32(xb, x))));
+    const __m256i fours = _mm256_add_epi32(
+        xl, _mm256_add_epi32(xt, _mm256_add_epi32(xr, _mm256_add_epi32(xb, x))));
     const __m256i threes = _mm256_add_epi32(xtl, _mm256_add_epi32(xtr, _mm256_add_epi32(xbr, xbl)));
 
     return _mm256_sub_epi32(_mm256_slli_epi32(_mm256_add_epi32(fours, threes), 2), threes);
@@ -486,16 +486,16 @@ static AOM_FORCE_INLINE void calc_ab_fast(int32_t *A, int32_t *b, const int32_t 
                 const __m256i a_res = _mm256_i32gather_epi32(eb_x_by_xplus1, z, 4);
                 yy_storeu_256(A + j, a_res);
 
-                const __m256i a_complement =
-                    _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR), a_res);
+                const __m256i a_complement = _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR),
+                                                              a_res);
 
                 // sum1 might have lanes greater than 2^15, so we can't use madd to do
                 // multiplication involving sum1. However, a_complement and one_over_n
                 // are both less than 256, so we can multiply them first.
                 const __m256i a_comp_over_n = _mm256_madd_epi16(a_complement, one_over_n);
                 const __m256i b_int         = _mm256_mullo_epi32(a_comp_over_n, sum1);
-                const __m256i b_res =
-                    _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res), SGRPROJ_RECIP_BITS);
+                const __m256i b_res         = _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res),
+                                                        SGRPROJ_RECIP_BITS);
                 yy_storeu_256(b + j, b_res);
                 j += 8;
             } while (j < width + 2);
@@ -520,16 +520,16 @@ static AOM_FORCE_INLINE void calc_ab_fast(int32_t *A, int32_t *b, const int32_t 
                 const __m256i a_res = _mm256_i32gather_epi32(eb_x_by_xplus1, z, 4);
                 yy_storeu_256(A + j, a_res);
 
-                const __m256i a_complement =
-                    _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR), a_res);
+                const __m256i a_complement = _mm256_sub_epi32(_mm256_set1_epi32(SGRPROJ_SGR),
+                                                              a_res);
 
                 // sum1 might have lanes greater than 2^15, so we can't use madd to do
                 // multiplication involving sum1. However, a_complement and one_over_n
                 // are both less than 256, so we can multiply them first.
                 const __m256i a_comp_over_n = _mm256_madd_epi16(a_complement, one_over_n);
                 const __m256i b_int         = _mm256_mullo_epi32(a_comp_over_n, sum1);
-                const __m256i b_res =
-                    _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res), SGRPROJ_RECIP_BITS);
+                const __m256i b_res         = _mm256_srli_epi32(_mm256_add_epi32(b_int, rnd_res),
+                                                        SGRPROJ_RECIP_BITS);
                 yy_storeu_256(b + j, b_res);
                 j += 8;
             } while (j < width + 2);
@@ -693,10 +693,10 @@ static AOM_FORCE_INLINE void final_filter_fast(int32_t *dst, int32_t dst_stride,
     }
 }
 
-void eb_av1_selfguided_restoration_avx2(const uint8_t *dgd8, int32_t width, int32_t height,
-                                        int32_t dgd_stride, int32_t *flt0, int32_t *flt1,
-                                        int32_t flt_stride, int32_t sgr_params_idx,
-                                        int32_t bit_depth, int32_t highbd) {
+void svt_av1_selfguided_restoration_avx2(const uint8_t *dgd8, int32_t width, int32_t height,
+                                         int32_t dgd_stride, int32_t *flt0, int32_t *flt1,
+                                         int32_t flt_stride, int32_t sgr_params_idx,
+                                         int32_t bit_depth, int32_t highbd) {
     // The ALIGN_POWER_OF_TWO macro here ensures that column 1 of atl, btl,
     // ctl and dtl is 32-byte aligned.
     const int32_t buf_elts = ALIGN_POWER_OF_TWO(RESTORATION_PROC_UNIT_PELS, 3);
@@ -766,18 +766,18 @@ void eb_av1_selfguided_restoration_avx2(const uint8_t *dgd8, int32_t width, int3
     }
 }
 
-void eb_apply_selfguided_restoration_avx2(const uint8_t *dat8, int32_t width, int32_t height,
-                                          int32_t stride, int32_t eps, const int32_t *xqd,
-                                          uint8_t *dst8, int32_t dst_stride, int32_t *tmpbuf,
-                                          int32_t bit_depth, int32_t highbd) {
+void svt_apply_selfguided_restoration_avx2(const uint8_t *dat8, int32_t width, int32_t height,
+                                           int32_t stride, int32_t eps, const int32_t *xqd,
+                                           uint8_t *dst8, int32_t dst_stride, int32_t *tmpbuf,
+                                           int32_t bit_depth, int32_t highbd) {
     int32_t *flt0 = tmpbuf;
     int32_t *flt1 = flt0 + RESTORATION_UNITPELS_MAX;
     assert(width * height <= RESTORATION_UNITPELS_MAX);
-    eb_av1_selfguided_restoration_avx2(
+    svt_av1_selfguided_restoration_avx2(
         dat8, width, height, stride, flt0, flt1, width, eps, bit_depth, highbd);
     const SgrParamsType *const params = &eb_sgr_params[eps];
     int32_t                    xq[2];
-    eb_decode_xq(xqd, xq, params);
+    svt_decode_xq(xqd, xq, params);
 
     const __m256i xq0      = _mm256_set1_epi32(xq[0]);
     const __m256i xq1      = _mm256_set1_epi32(xq[1]);

@@ -23,7 +23,7 @@ extern "C" {
 // API Version
 #define SVT_VERSION_MAJOR 0
 #define SVT_VERSION_MINOR 8
-#define SVT_VERSION_PATCHLEVEL 5
+#define SVT_VERSION_PATCHLEVEL 6
 
 #if defined(_WIN32)
 #define EB_HELPER_EXPORT __declspec(dllexport)
@@ -48,6 +48,9 @@ extern "C" {
 
 #define EB_MAX_NUM_OPERATING_POINTS 32
 
+#if FTR_ENABLE_FIXED_QINDEX_OFFSETS
+#define MAX_TEMPORAL_LAYERS     6
+#endif
 #define EB_MAX_TEMPORAL_LAYERS MAX_TEMPORAL_LAYERS
 
 /********************************

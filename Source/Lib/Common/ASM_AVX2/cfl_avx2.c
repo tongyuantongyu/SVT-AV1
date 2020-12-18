@@ -36,9 +36,9 @@ static INLINE void _mm_storeh_epi32(__m128i const *mem_addr, __m128i a) {
     *((int32_t *)mem_addr) = _mm_cvtsi128_si32(a);
 }
 
-void eb_cfl_predict_lbd_avx2(const int16_t *pred_buf_q3, uint8_t *pred, int32_t pred_stride,
-                             uint8_t *dst, int32_t dst_stride, int32_t alpha_q3, int32_t bit_depth,
-                             int32_t width, int32_t height) {
+void svt_cfl_predict_lbd_avx2(const int16_t *pred_buf_q3, uint8_t *pred, int32_t pred_stride,
+                              uint8_t *dst, int32_t dst_stride, int32_t alpha_q3, int32_t bit_depth,
+                              int32_t width, int32_t height) {
     (void)bit_depth;
     (void)pred_stride;
     if (width <= 16) {
@@ -100,12 +100,12 @@ static INLINE __m128i highbd_clamp_epi16_ssse3(__m128i u, __m128i zero, __m128i 
     return _mm_max_epi16(_mm_min_epi16(u, max), zero);
 }
 
-void eb_cfl_predict_hbd_avx2(const int16_t *pred_buf_q3,
-                             uint16_t *     pred, // AMIR ADDED
-                             int32_t        pred_stride,
-                             uint16_t *     dst, // AMIR changed to 8 bit
-                             int32_t dst_stride, int32_t alpha_q3, int32_t bit_depth, int32_t width,
-                             int32_t height) {
+void svt_cfl_predict_hbd_avx2(const int16_t *pred_buf_q3,
+                              uint16_t *     pred, // AMIR ADDED
+                              int32_t        pred_stride,
+                              uint16_t *     dst, // AMIR changed to 8 bit
+                              int32_t dst_stride, int32_t alpha_q3, int32_t bit_depth,
+                              int32_t width, int32_t height) {
     (void)pred_stride;
     // Use SSSE3 version for smaller widths
     if (width < 16) {
@@ -173,8 +173,8 @@ static INLINE __m256i _mm256_addl_epi16(__m256i a) {
                             _mm256_unpackhi_epi16(a, _mm256_setzero_si256()));
 }
 
-/*staticINLINE*/ void eb_subtract_average_avx2(int16_t *pred_buf_q3, int32_t width, int32_t height,
-                                               int32_t round_offset, int32_t num_pel_log2) {
+/*staticINLINE*/ void svt_subtract_average_avx2(int16_t *pred_buf_q3, int32_t width, int32_t height,
+                                                int32_t round_offset, int32_t num_pel_log2) {
     // Use SSE2 version for smaller widths
 
     if ((width == 4) || (width == 8)) {
@@ -239,7 +239,8 @@ static INLINE __m256i _mm256_addl_epi16(__m256i a) {
         // For width 32, we use a second sum accumulator to reduce accumulator
         // dependencies in the loop.
         __m256i sum2;
-        if (width == 32) sum2 = _mm256_setzero_si256();
+        if (width == 32)
+            sum2 = _mm256_setzero_si256();
 
         do {
             // Add top row to the bottom row
@@ -255,7 +256,8 @@ static INLINE __m256i _mm256_addl_epi16(__m256i a) {
             src += step;
         } while (src < end);
         // Combine both sum accumulators
-        if (width == 32) sum = _mm256_add_epi32(sum, sum2);
+        if (width == 32)
+            sum = _mm256_add_epi32(sum, sum2);
 
         __m256i fill = fill_sum_epi32(sum);
 
@@ -278,18 +280,18 @@ static INLINE __m256i _mm256_addl_epi16(__m256i a) {
     }
 }
 
-void cfl_luma_subsampling_420_hbd_avx2(const uint16_t *input, int32_t input_stride,
-                                       int16_t *output_q3, int32_t width, int32_t height) {
+void svt_cfl_luma_subsampling_420_hbd_avx2(const uint16_t *input, int32_t input_stride,
+                                           int16_t *output_q3, int32_t width, int32_t height) {
     const int      luma_stride = input_stride << 1;
     __m256i *      row         = (__m256i *)output_q3;
     const __m256i *row_end     = row + (height >> 1) * CFL_BUF_LINE_I256;
     do {
         if (width == 4) {
-            const __m128i top     = _mm_loadl_epi64((__m128i *)input);
-            const __m128i bot     = _mm_loadl_epi64((__m128i *)(input + input_stride));
-            __m128i       sum     = _mm_add_epi16(top, bot);
-            sum                   = _mm_hadd_epi16(sum, sum);
-            *((int *)row)         = _mm_cvtsi128_si32(_mm_add_epi16(sum, sum));
+            const __m128i top = _mm_loadl_epi64((__m128i *)input);
+            const __m128i bot = _mm_loadl_epi64((__m128i *)(input + input_stride));
+            __m128i       sum = _mm_add_epi16(top, bot);
+            sum               = _mm_hadd_epi16(sum, sum);
+            *((int *)row)     = _mm_cvtsi128_si32(_mm_add_epi16(sum, sum));
         } else if (width == 8) {
             const __m128i top = _mm_loadu_si128((__m128i *)input);
             const __m128i bot = _mm_loadu_si128((__m128i *)(input + input_stride));
@@ -304,7 +306,7 @@ void cfl_luma_subsampling_420_hbd_avx2(const uint16_t *input, int32_t input_stri
             sum         = _mm256_add_epi16(sum, sum);
             _mm_storel_epi64((__m128i *)row, _mm256_castsi256_si128(sum));
             int16_t *ptr = (int16_t *)row;
-            _mm_storel_epi64((__m128i *)(ptr+4), _mm256_extracti128_si256(sum,1));
+            _mm_storel_epi64((__m128i *)(ptr + 4), _mm256_extracti128_si256(sum, 1));
         } else {
             __m256i top   = _mm256_loadu_si256((__m256i *)input);
             __m256i bot   = _mm256_loadu_si256((__m256i *)(input + input_stride));
@@ -317,15 +319,15 @@ void cfl_luma_subsampling_420_hbd_avx2(const uint16_t *input, int32_t input_stri
             hsum          = _mm256_add_epi16(hsum, hsum);
             _mm256_storeu_si256(row, hsum);
             if (width == 64) {
-                top           = _mm256_loadu_si256((__m256i *)(input + 32));
-                bot           = _mm256_loadu_si256((__m256i *)(input + 32 +input_stride));
-                sum           = _mm256_add_epi16(top, bot);
-                top_1         = _mm256_loadu_si256((__m256i *)(input + 48));
-                bot_1         = _mm256_loadu_si256((__m256i *)(input + 48 + input_stride));
-                sum_1         = _mm256_add_epi16(top_1, bot_1);
-                hsum          = _mm256_hadd_epi16(sum, sum_1);
-                hsum          = _mm256_permute4x64_epi64(hsum, _MM_SHUFFLE(3, 1, 2, 0));
-                hsum          = _mm256_add_epi16(hsum, hsum);
+                top   = _mm256_loadu_si256((__m256i *)(input + 32));
+                bot   = _mm256_loadu_si256((__m256i *)(input + 32 + input_stride));
+                sum   = _mm256_add_epi16(top, bot);
+                top_1 = _mm256_loadu_si256((__m256i *)(input + 48));
+                bot_1 = _mm256_loadu_si256((__m256i *)(input + 48 + input_stride));
+                sum_1 = _mm256_add_epi16(top_1, bot_1);
+                hsum  = _mm256_hadd_epi16(sum, sum_1);
+                hsum  = _mm256_permute4x64_epi64(hsum, _MM_SHUFFLE(3, 1, 2, 0));
+                hsum  = _mm256_add_epi16(hsum, hsum);
                 _mm256_storeu_si256(row + 1, hsum);
             }
         }
@@ -333,8 +335,8 @@ void cfl_luma_subsampling_420_hbd_avx2(const uint16_t *input, int32_t input_stri
     } while ((row += CFL_BUF_LINE_I256) < row_end);
 }
 
-void cfl_luma_subsampling_420_lbd_avx2(const uint8_t *input, int32_t input_stride,
-                                       int16_t *output_q3, int32_t width, int32_t height) {
+void svt_cfl_luma_subsampling_420_lbd_avx2(const uint8_t *input, int32_t input_stride,
+                                           int16_t *output_q3, int32_t width, int32_t height) {
     const __m128i  twos_128    = _mm_set1_epi8(2);
     const __m256i  twos_256    = _mm256_set1_epi8(2); // Thirty two twos
     const int      luma_stride = input_stride << 1;

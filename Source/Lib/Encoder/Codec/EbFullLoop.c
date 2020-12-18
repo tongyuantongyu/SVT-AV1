@@ -34,12 +34,12 @@ static PartitionType from_shape_to_part[] = {PARTITION_NONE,
                                              PARTITION_SPLIT};
 
 
-void eb_aom_quantize_b_c_ii(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                            const int16_t *zbin_ptr, const int16_t *round_ptr,
-                            const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
-                            TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr, const int16_t *dequant_ptr,
-                            uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan,
-                            const QmVal *qm_ptr, const QmVal *iqm_ptr, const int32_t log_scale) {
+void svt_aom_quantize_b_c_ii(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                             const int16_t *zbin_ptr, const int16_t *round_ptr,
+                             const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
+                             TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr, const int16_t *dequant_ptr,
+                             uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan,
+                             const QmVal *qm_ptr, const QmVal *iqm_ptr, const int32_t log_scale) {
     const int32_t zbins[2]  = {ROUND_POWER_OF_TWO(zbin_ptr[0], log_scale),
                               ROUND_POWER_OF_TWO(zbin_ptr[1], log_scale)};
     const int32_t nzbins[2] = {zbins[0] * -1, zbins[1] * -1};
@@ -93,13 +93,13 @@ void eb_aom_quantize_b_c_ii(const TranLow *coeff_ptr, intptr_t n_coeffs,
 }
 
 
-void eb_aom_quantize_b_c(const TranLow *coeff_ptr, int32_t stride,
-                            int32_t width, int32_t height, intptr_t n_coeffs,
-                            const int16_t *zbin_ptr, const int16_t *round_ptr,
-                            const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
-                            TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr, const int16_t *dequant_ptr,
-                            uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan,
-                            const QmVal *qm_ptr, const QmVal *iqm_ptr, const int32_t log_scale) {
+void svt_aom_quantize_b_c(const TranLow *coeff_ptr, int32_t stride,
+                          int32_t width, int32_t height, intptr_t n_coeffs,
+                          const int16_t *zbin_ptr, const int16_t *round_ptr,
+                          const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
+                          TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr, const int16_t *dequant_ptr,
+                          uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan,
+                          const QmVal *qm_ptr, const QmVal *iqm_ptr, const int32_t log_scale) {
     const int32_t zbins[2]       = {ROUND_POWER_OF_TWO(zbin_ptr[0], log_scale),
                               ROUND_POWER_OF_TWO(zbin_ptr[1], log_scale)};
     const int32_t nzbins[2]      = {zbins[0] * -1, zbins[1] * -1};
@@ -168,13 +168,13 @@ void eb_aom_quantize_b_c(const TranLow *coeff_ptr, int32_t stride,
 
     *eob_ptr = (uint16_t)(eob + 1);
 }
-void eb_aom_highbd_quantize_b_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                                   const int16_t *zbin_ptr, const int16_t *round_ptr,
-                                   const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
-                                   TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
-                                   const int16_t *dequant_ptr, uint16_t *eob_ptr,
-                                   const int16_t *scan, const int16_t *iscan, const QmVal *qm_ptr,
-                                   const QmVal *iqm_ptr, const int32_t log_scale) {
+void svt_aom_highbd_quantize_b_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                                 const int16_t *zbin_ptr, const int16_t *round_ptr,
+                                 const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
+                                 TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
+                                 const int16_t *dequant_ptr, uint16_t *eob_ptr,
+                                 const int16_t *scan, const int16_t *iscan, const QmVal *qm_ptr,
+                                 const QmVal *iqm_ptr, const int32_t log_scale) {
     intptr_t      eob = -1;
     (void)iscan;
 
@@ -224,41 +224,41 @@ void eb_aom_highbd_quantize_b_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
     *eob_ptr = (uint16_t)(eob + 1);
 }
 
-void eb_av1_highbd_quantize_b_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                                     const MacroblockPlane *p, TranLow *qcoeff_ptr,
-                                     TranLow *dqcoeff_ptr, uint16_t *eob_ptr, const ScanOrder *sc,
-                                     const QuantParam *qparam) {
+void svt_av1_highbd_quantize_b_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                                      const MacroblockPlane *p, TranLow *qcoeff_ptr,
+                                      TranLow *dqcoeff_ptr, uint16_t *eob_ptr, const ScanOrder *sc,
+                                      const QuantParam *qparam) {
     const QmVal * qm_ptr     = qparam->qmatrix;
     const QmVal * iqm_ptr    = qparam->iqmatrix;
     if (qm_ptr != NULL && iqm_ptr != NULL) {
-        eb_aom_highbd_quantize_b_c(coeff_ptr,
-                                      n_coeffs,
-                                      p->zbin_qtx,
-                                      p->round_qtx,
-                                      p->quant_qtx,
-                                      p->quant_shift_qtx,
-                                      qcoeff_ptr,
-                                      dqcoeff_ptr,
-                                      p->dequant_qtx,
-                                      eob_ptr,
-                                      sc->scan,
-                                      sc->iscan,
-                                      qm_ptr,
-                                      iqm_ptr,
-                                      qparam->log_scale);
+        svt_aom_highbd_quantize_b_c(coeff_ptr,
+                                    n_coeffs,
+                                    p->zbin_qtx,
+                                    p->round_qtx,
+                                    p->quant_qtx,
+                                    p->quant_shift_qtx,
+                                    qcoeff_ptr,
+                                    dqcoeff_ptr,
+                                    p->dequant_qtx,
+                                    eob_ptr,
+                                    sc->scan,
+                                    sc->iscan,
+                                    qm_ptr,
+                                    iqm_ptr,
+                                    qparam->log_scale);
     } else {
-                eb_aom_highbd_quantize_b(coeff_ptr,
-                                         n_coeffs,
-                                         p->zbin_qtx,
-                                         p->round_qtx,
-                                         p->quant_qtx,
-                                         p->quant_shift_qtx,
-                                         qcoeff_ptr,
-                                         dqcoeff_ptr,
-                                         p->dequant_qtx,
-                                         eob_ptr,
-                                         sc->scan,
-                                         sc->iscan,
+                svt_aom_highbd_quantize_b(coeff_ptr,
+                                          n_coeffs,
+                                          p->zbin_qtx,
+                                          p->round_qtx,
+                                          p->quant_qtx,
+                                          p->quant_shift_qtx,
+                                          qcoeff_ptr,
+                                          dqcoeff_ptr,
+                                          p->dequant_qtx,
+                                          eob_ptr,
+                                          sc->scan,
+                                          sc->iscan,
                     NULL,
                     NULL,
                     qparam->log_scale);
@@ -273,26 +273,26 @@ void av1_quantize_b_facade_ii(const TranLow *coeff_ptr, int32_t stride, int32_t 
     const QmVal * qm_ptr     = qparam->qmatrix;
     const QmVal * iqm_ptr    = qparam->iqmatrix;
     if (qm_ptr != NULL && iqm_ptr != NULL) {
-        eb_aom_quantize_b_c(coeff_ptr,
-                               stride,
-                               width,
-                               height,
-                               n_coeffs,
-                               p->zbin_qtx,
-                               p->round_qtx,
-                               p->quant_qtx,
-                               p->quant_shift_qtx,
-                               qcoeff_ptr,
-                               dqcoeff_ptr,
-                               p->dequant_qtx,
-                               eob_ptr,
-                               sc->scan,
-                               sc->iscan,
-                               qm_ptr,
-                               iqm_ptr,
-                               qparam->log_scale);
+        svt_aom_quantize_b_c(coeff_ptr,
+                             stride,
+                             width,
+                             height,
+                             n_coeffs,
+                             p->zbin_qtx,
+                             p->round_qtx,
+                             p->quant_qtx,
+                             p->quant_shift_qtx,
+                             qcoeff_ptr,
+                             dqcoeff_ptr,
+                             p->dequant_qtx,
+                             eob_ptr,
+                             sc->scan,
+                             sc->iscan,
+                             qm_ptr,
+                             iqm_ptr,
+                             qparam->log_scale);
     } else {
-            eb_aom_quantize_b(coeff_ptr,
+            svt_aom_quantize_b(coeff_ptr,
                 n_coeffs,
                 p->zbin_qtx,
                 p->round_qtx,
@@ -376,11 +376,11 @@ static void quantize_fp_helper_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
     *eob_ptr = eob + 1;
 }
 
-void eb_av1_quantize_fp_c(const TranLow *coeff_ptr, intptr_t n_coeffs, const int16_t *zbin_ptr,
-                          const int16_t *round_ptr, const int16_t *quant_ptr,
-                          const int16_t *quant_shift_ptr, TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
-                          const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
-                          const int16_t *iscan) {
+void svt_av1_quantize_fp_c(const TranLow *coeff_ptr, intptr_t n_coeffs, const int16_t *zbin_ptr,
+                           const int16_t *round_ptr, const int16_t *quant_ptr,
+                           const int16_t *quant_shift_ptr, TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
+                           const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
+                           const int16_t *iscan) {
     quantize_fp_helper_c(coeff_ptr,
                          n_coeffs,
                          zbin_ptr,
@@ -398,7 +398,7 @@ void eb_av1_quantize_fp_c(const TranLow *coeff_ptr, intptr_t n_coeffs, const int
                          0);
 }
 
-static void eb_highbd_quantize_fp_helper_c(
+static void svt_highbd_quantize_fp_helper_c(
     const TranLow *coeff_ptr, intptr_t count, const int16_t *zbin_ptr, const int16_t *round_ptr,
     const int16_t *quant_ptr, const int16_t *quant_shift_ptr, TranLow *qcoeff_ptr,
     TranLow *dqcoeff_ptr, const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
@@ -531,12 +531,12 @@ static void highbd_quantize_fp_helper_c(
     *eob_ptr = eob + 1;
 }
 
-void eb_av1_highbd_quantize_fp_c(const TranLow *coeff_ptr, intptr_t count, const int16_t *zbin_ptr,
-                                 const int16_t *round_ptr, const int16_t *quant_ptr,
-                                 const int16_t *quant_shift_ptr, TranLow *qcoeff_ptr,
-                                 TranLow *dqcoeff_ptr, const int16_t *dequant_ptr,
-                                 uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan,
-                                 int16_t log_scale) {
+void svt_av1_highbd_quantize_fp_c(const TranLow *coeff_ptr, intptr_t count, const int16_t *zbin_ptr,
+                                  const int16_t *round_ptr, const int16_t *quant_ptr,
+                                  const int16_t *quant_shift_ptr, TranLow *qcoeff_ptr,
+                                  TranLow *dqcoeff_ptr, const int16_t *dequant_ptr,
+                                  uint16_t *eob_ptr, const int16_t *scan, const int16_t *iscan,
+                                  int16_t log_scale) {
     highbd_quantize_fp_helper_c(coeff_ptr,
                                 count,
                                 zbin_ptr,
@@ -554,12 +554,12 @@ void eb_av1_highbd_quantize_fp_c(const TranLow *coeff_ptr, intptr_t count, const
                                 log_scale);
 }
 
-void eb_av1_quantize_fp_32x32_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                                const int16_t *zbin_ptr, const int16_t *round_ptr,
-                                const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
-                                TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
-                                const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
-                                const int16_t *iscan) {
+void svt_av1_quantize_fp_32x32_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                                 const int16_t *zbin_ptr, const int16_t *round_ptr,
+                                 const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
+                                 TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
+                                 const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
+                                 const int16_t *iscan) {
     quantize_fp_helper_c(coeff_ptr,
                          n_coeffs,
                          zbin_ptr,
@@ -577,12 +577,12 @@ void eb_av1_quantize_fp_32x32_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
                          1);
 }
 
-void eb_av1_quantize_fp_64x64_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                                const int16_t *zbin_ptr, const int16_t *round_ptr,
-                                const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
-                                TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
-                                const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
-                                const int16_t *iscan) {
+void svt_av1_quantize_fp_64x64_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                                 const int16_t *zbin_ptr, const int16_t *round_ptr,
+                                 const int16_t *quant_ptr, const int16_t *quant_shift_ptr,
+                                 TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
+                                 const int16_t *dequant_ptr, uint16_t *eob_ptr, const int16_t *scan,
+                                 const int16_t *iscan) {
     quantize_fp_helper_c(coeff_ptr,
                          n_coeffs,
                          zbin_ptr,
@@ -600,9 +600,9 @@ void eb_av1_quantize_fp_64x64_c(const TranLow *coeff_ptr, intptr_t n_coeffs,
                          2);
 }
 
-void eb_av1_quantize_fp_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                               const MacroblockPlane *p, TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
-                               uint16_t *eob_ptr, const ScanOrder *sc, const QuantParam *qparam) {
+void svt_av1_quantize_fp_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                                const MacroblockPlane *p, TranLow *qcoeff_ptr, TranLow *dqcoeff_ptr,
+                                uint16_t *eob_ptr, const ScanOrder *sc, const QuantParam *qparam) {
     const QmVal *qm_ptr  = qparam->qmatrix;
     const QmVal *iqm_ptr = qparam->iqmatrix;
 
@@ -625,88 +625,88 @@ void eb_av1_quantize_fp_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
     else {
         switch (qparam->log_scale) {
         case 0:
-            eb_av1_quantize_fp(coeff_ptr,
-                               n_coeffs,
-                               p->zbin_qtx,
-                               p->round_fp_qtx,
-                               p->quant_fp_qtx,
-                               p->quant_shift_qtx,
-                               qcoeff_ptr,
-                               dqcoeff_ptr,
-                               p->dequant_qtx,
-                               eob_ptr,
-                               sc->scan,
-                               sc->iscan);
+            svt_av1_quantize_fp(coeff_ptr,
+                                n_coeffs,
+                                p->zbin_qtx,
+                                p->round_fp_qtx,
+                                p->quant_fp_qtx,
+                                p->quant_shift_qtx,
+                                qcoeff_ptr,
+                                dqcoeff_ptr,
+                                p->dequant_qtx,
+                                eob_ptr,
+                                sc->scan,
+                                sc->iscan);
             break;
         case 1:
-            eb_av1_quantize_fp_32x32(coeff_ptr,
-                                     n_coeffs,
-                                     p->zbin_qtx,
-                                     p->round_fp_qtx,
-                                     p->quant_fp_qtx,
-                                     p->quant_shift_qtx,
-                                     qcoeff_ptr,
-                                     dqcoeff_ptr,
-                                     p->dequant_qtx,
-                                     eob_ptr,
-                                     sc->scan,
-                                     sc->iscan);
+            svt_av1_quantize_fp_32x32(coeff_ptr,
+                                      n_coeffs,
+                                      p->zbin_qtx,
+                                      p->round_fp_qtx,
+                                      p->quant_fp_qtx,
+                                      p->quant_shift_qtx,
+                                      qcoeff_ptr,
+                                      dqcoeff_ptr,
+                                      p->dequant_qtx,
+                                      eob_ptr,
+                                      sc->scan,
+                                      sc->iscan);
             break;
         case 2:
-            eb_av1_quantize_fp_64x64(coeff_ptr,
-                                     n_coeffs,
-                                     p->zbin_qtx,
-                                     p->round_fp_qtx,
-                                     p->quant_fp_qtx,
-                                     p->quant_shift_qtx,
-                                     qcoeff_ptr,
-                                     dqcoeff_ptr,
-                                     p->dequant_qtx,
-                                     eob_ptr,
-                                     sc->scan,
-                                     sc->iscan);
+            svt_av1_quantize_fp_64x64(coeff_ptr,
+                                      n_coeffs,
+                                      p->zbin_qtx,
+                                      p->round_fp_qtx,
+                                      p->quant_fp_qtx,
+                                      p->quant_shift_qtx,
+                                      qcoeff_ptr,
+                                      dqcoeff_ptr,
+                                      p->dequant_qtx,
+                                      eob_ptr,
+                                      sc->scan,
+                                      sc->iscan);
             break;
         default: assert(0);
         }
     }
 }
 
-void eb_av1_highbd_quantize_fp_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
-                                      const MacroblockPlane *p, TranLow *qcoeff_ptr,
-                                      TranLow *dqcoeff_ptr, uint16_t *eob_ptr, const ScanOrder *sc,
-                                      const QuantParam *qparam) {
+void svt_av1_highbd_quantize_fp_facade(const TranLow *coeff_ptr, intptr_t n_coeffs,
+                                       const MacroblockPlane *p, TranLow *qcoeff_ptr,
+                                       TranLow *dqcoeff_ptr, uint16_t *eob_ptr, const ScanOrder *sc,
+                                       const QuantParam *qparam) {
     const QmVal *qm_ptr  = qparam->qmatrix;
     const QmVal *iqm_ptr = qparam->iqmatrix;
     if (qm_ptr != NULL && iqm_ptr != NULL) {
-        eb_highbd_quantize_fp_helper_c(coeff_ptr,
-                                       n_coeffs,
-                                       p->zbin_qtx,
-                                       p->round_fp_qtx,
-                                       p->quant_fp_qtx,
-                                       p->quant_shift_qtx,
-                                       qcoeff_ptr,
-                                       dqcoeff_ptr,
-                                       p->dequant_qtx,
-                                       eob_ptr,
-                                       sc->scan,
-                                       sc->iscan,
-                                       qm_ptr,
-                                       iqm_ptr,
-                                       qparam->log_scale);
+        svt_highbd_quantize_fp_helper_c(coeff_ptr,
+                                        n_coeffs,
+                                        p->zbin_qtx,
+                                        p->round_fp_qtx,
+                                        p->quant_fp_qtx,
+                                        p->quant_shift_qtx,
+                                        qcoeff_ptr,
+                                        dqcoeff_ptr,
+                                        p->dequant_qtx,
+                                        eob_ptr,
+                                        sc->scan,
+                                        sc->iscan,
+                                        qm_ptr,
+                                        iqm_ptr,
+                                        qparam->log_scale);
     } else {
-        eb_av1_highbd_quantize_fp(coeff_ptr,
-                                  n_coeffs,
-                                  p->zbin_qtx,
-                                  p->round_fp_qtx,
-                                  p->quant_fp_qtx,
-                                  p->quant_shift_qtx,
-                                  qcoeff_ptr,
-                                  dqcoeff_ptr,
-                                  p->dequant_qtx,
-                                  eob_ptr,
-                                  sc->scan,
-                                  sc->iscan,
-                                  qparam->log_scale);
+        svt_av1_highbd_quantize_fp(coeff_ptr,
+                                   n_coeffs,
+                                   p->zbin_qtx,
+                                   p->round_fp_qtx,
+                                   p->quant_fp_qtx,
+                                   p->quant_shift_qtx,
+                                   qcoeff_ptr,
+                                   dqcoeff_ptr,
+                                   p->dequant_qtx,
+                                   eob_ptr,
+                                   sc->scan,
+                                   sc->iscan,
+                                   qparam->log_scale);
     }
 }
 
@@ -753,13 +753,6 @@ static INLINE int32_t get_eob_pos_token(const int32_t eob, int32_t *const extra)
     *extra = eob - eb_k_eob_group_start[t];
 
     return t;
-}
-
-static INLINE TxSize get_txsize_entropy_ctx(TxSize txsize) {
-    return (TxSize)((txsize_sqr_map[txsize] + txsize_sqr_up_map[txsize] + 1) >> 1);
-}
-static INLINE PlaneType get_plane_type(int plane) {
-    return (plane == 0) ? PLANE_TYPE_Y : PLANE_TYPE_UV;
 }
 // Transform end of block bit estimation
 static int get_eob_cost(int eob, const LvMapEobCost *txb_eob_costs,
@@ -1189,12 +1182,17 @@ static INLINE void update_coeff_eob_fast(uint16_t *eob, int shift, const int16_t
     *eob = eob_out;
 }
 
-void eb_av1_optimize_b(ModeDecisionContext *md_context, int16_t txb_skip_context,
-                       int16_t dc_sign_context, const TranLow *coeff_ptr, int32_t stride,
-                       intptr_t n_coeffs, const MacroblockPlane *p, TranLow *qcoeff_ptr,
-                       TranLow *dqcoeff_ptr, uint16_t *eob, const ScanOrder *sc,
-                       const QuantParam *qparam, TxSize tx_size, TxType tx_type, EbBool is_inter,
-                       uint32_t lambda,int plane)
+// look-up table for sqrt of number of pixels in a transform block
+// rounded up to the nearest integer.
+static const int sqrt_tx_pixels_2d[TX_SIZES_ALL] = { 4,  8,  16, 32, 32, 6,  6,
+                                                     12, 12, 23, 23, 32, 32, 8,
+                                                     8,  16, 16, 23, 23 };
+void svt_av1_optimize_b(ModeDecisionContext *md_context, int16_t txb_skip_context,
+                        int16_t dc_sign_context, const TranLow *coeff_ptr, int32_t stride,
+                        intptr_t n_coeffs, const MacroblockPlane *p, TranLow *qcoeff_ptr,
+                        TranLow *dqcoeff_ptr, uint16_t *eob, const ScanOrder *sc,
+                        const QuantParam *qparam, TxSize tx_size, TxType tx_type, EbBool is_inter,
+                        uint32_t lambda,int plane)
 
 {
     (void)stride;
@@ -1202,17 +1200,20 @@ void eb_av1_optimize_b(ModeDecisionContext *md_context, int16_t txb_skip_context
     (void)sc;
     (void)qparam;
     int                    sharpness       = 0; // No Sharpness
-    // Perform a fast RDOQ stage for inter and chroma blocks
-    int                    fast_mode       = (is_inter && plane);
+    int fast_mode =
+        (md_context->rdoq_ctrls.eob_fast_l_inter && !is_inter && !plane) ||
+        (md_context->rdoq_ctrls.eob_fast_l_intra && !is_inter && !plane) ||
+        (md_context->rdoq_ctrls.eob_fast_c_inter &&  is_inter &&  plane) ||
+        (md_context->rdoq_ctrls.eob_fast_c_intra &&  is_inter &&  plane) ? 1 : 0;
     const ScanOrder *const scan_order      = &av1_scan_orders[tx_size][tx_type];
     const int16_t *        scan            = scan_order->scan;
-    const int              shift           = av1_get_tx_scale(tx_size);
-    const PlaneType        plane_type      = get_plane_type(plane);
-    const TxSize           txs_ctx         = get_txsize_entropy_ctx(tx_size);
-    const TxClass          tx_class        = tx_type_to_class[tx_type];
-    const int              bwl             = get_txb_bwl(tx_size);
-    const int              width           = get_txb_wide(tx_size);
-    const int              height          = get_txb_high(tx_size);
+    const int       shift      = av1_get_tx_scale_tab[tx_size];
+    const PlaneType plane_type = plane;
+    const TxSize    txs_ctx    = get_txsize_entropy_ctx_tab[tx_size];
+    const TxClass   tx_class   = tx_type_to_class[tx_type];
+    const int       bwl        = get_txb_bwl_tab[tx_size];
+    const int       width      = get_txb_wide_tab[tx_size];
+    const int       height     = get_txb_high_tab[tx_size];
     assert(width == (1 << bwl));
     assert(txs_ctx < TX_SIZES);
     const LvMapCoeffCost *txb_costs =
@@ -1220,6 +1221,17 @@ void eb_av1_optimize_b(ModeDecisionContext *md_context, int16_t txb_skip_context
     const int           eob_multi_size = txsize_log2_minus4[tx_size];
     const LvMapEobCost *txb_eob_costs =
         &md_context->md_rate_estimation_ptr->eob_frac_bits[eob_multi_size][plane_type];
+    const int non_skip_cost = txb_costs->txb_skip_cost[txb_skip_context][0];
+    const int skip_cost     = txb_costs->txb_skip_cost[txb_skip_context][1];
+    const int eob_cost      = get_eob_cost(*eob, txb_eob_costs, txb_costs, tx_class);
+
+    int sq_size_idx = 7 - (int)log2f_32(md_context->blk_geom->sq_size);
+    if (eob_cost < (int)(width * height * sq_size_idx * md_context->rdoq_ctrls.early_exit_th)) {
+        if (skip_cost < non_skip_cost) {
+            return;
+        }
+    }
+
     if (fast_mode) {
         update_coeff_eob_fast(eob, shift, p->dequant_qtx, scan, coeff_ptr, qcoeff_ptr, dqcoeff_ptr);
         if (*eob == 0) return;
@@ -1230,10 +1242,7 @@ void eb_av1_optimize_b(ModeDecisionContext *md_context, int16_t txb_skip_context
     uint8_t        levels_buf[TX_PAD_2D];
     uint8_t *const levels = set_levels(levels_buf, width);
 
-    if (*eob > 1) eb_av1_txb_init_levels(qcoeff_ptr, width, height, levels);
-    const int non_skip_cost = txb_costs->txb_skip_cost[txb_skip_context][0];
-    const int skip_cost     = txb_costs->txb_skip_cost[txb_skip_context][1];
-    const int eob_cost = get_eob_cost(*eob, txb_eob_costs, txb_costs, tx_class);
+    if (*eob > 1) svt_av1_txb_init_levels(qcoeff_ptr, width, height, levels);
     int       accu_rate     = eob_cost;
 
     int64_t       accu_dist  = 0;
@@ -1418,64 +1427,64 @@ int32_t av1_quantize_inv_quantize(
                                        segmentation_qp_offset);
     if (bit_depth == EB_8BIT) {
         if (component_type == COMPONENT_LUMA) {
-            candidate_plane.quant_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.y_quant[q_index];
-            candidate_plane.quant_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.y_quant_fp[q_index];
-            candidate_plane.round_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.y_round_fp[q_index];
-            candidate_plane.quant_shift_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.y_quant_shift[q_index];
-            candidate_plane.zbin_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.y_zbin[q_index];
-            candidate_plane.round_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.y_round[q_index];
-            candidate_plane.dequant_qtx = pcs_ptr->parent_pcs_ptr->deq_8bit.y_dequant_qtx[q_index];
+            candidate_plane.quant_qtx = scs_ptr->quants_8bit.y_quant[q_index];
+            candidate_plane.quant_fp_qtx = scs_ptr->quants_8bit.y_quant_fp[q_index];
+            candidate_plane.round_fp_qtx = scs_ptr->quants_8bit.y_round_fp[q_index];
+            candidate_plane.quant_shift_qtx = scs_ptr->quants_8bit.y_quant_shift[q_index];
+            candidate_plane.zbin_qtx = scs_ptr->quants_8bit.y_zbin[q_index];
+            candidate_plane.round_qtx = scs_ptr->quants_8bit.y_round[q_index];
+            candidate_plane.dequant_qtx = scs_ptr->deq_8bit.y_dequant_qtx[q_index];
         }
 
-        if (component_type == COMPONENT_CHROMA_CB) {
-            candidate_plane.quant_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.u_quant[q_index];
-            candidate_plane.quant_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.u_quant_fp[q_index];
-            candidate_plane.round_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.u_round_fp[q_index];
-            candidate_plane.quant_shift_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.u_quant_shift[q_index];
-            candidate_plane.zbin_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.u_zbin[q_index];
-            candidate_plane.round_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.u_round[q_index];
-            candidate_plane.dequant_qtx = pcs_ptr->parent_pcs_ptr->deq_8bit.u_dequant_qtx[q_index];
+        else if (component_type == COMPONENT_CHROMA_CB) {
+            candidate_plane.quant_qtx = scs_ptr->quants_8bit.u_quant[q_index];
+            candidate_plane.quant_fp_qtx = scs_ptr->quants_8bit.u_quant_fp[q_index];
+            candidate_plane.round_fp_qtx = scs_ptr->quants_8bit.u_round_fp[q_index];
+            candidate_plane.quant_shift_qtx = scs_ptr->quants_8bit.u_quant_shift[q_index];
+            candidate_plane.zbin_qtx = scs_ptr->quants_8bit.u_zbin[q_index];
+            candidate_plane.round_qtx = scs_ptr->quants_8bit.u_round[q_index];
+            candidate_plane.dequant_qtx = scs_ptr->deq_8bit.u_dequant_qtx[q_index];
         }
 
-        if (component_type == COMPONENT_CHROMA_CR) {
-            candidate_plane.quant_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.v_quant[q_index];
-            candidate_plane.quant_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.v_quant_fp[q_index];
-            candidate_plane.round_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.v_round_fp[q_index];
-            candidate_plane.quant_shift_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.v_quant_shift[q_index];
-            candidate_plane.zbin_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.v_zbin[q_index];
-            candidate_plane.round_qtx = pcs_ptr->parent_pcs_ptr->quants_8bit.v_round[q_index];
-            candidate_plane.dequant_qtx = pcs_ptr->parent_pcs_ptr->deq_8bit.v_dequant_qtx[q_index];
+        else {
+            candidate_plane.quant_qtx = scs_ptr->quants_8bit.v_quant[q_index];
+            candidate_plane.quant_fp_qtx = scs_ptr->quants_8bit.v_quant_fp[q_index];
+            candidate_plane.round_fp_qtx = scs_ptr->quants_8bit.v_round_fp[q_index];
+            candidate_plane.quant_shift_qtx = scs_ptr->quants_8bit.v_quant_shift[q_index];
+            candidate_plane.zbin_qtx = scs_ptr->quants_8bit.v_zbin[q_index];
+            candidate_plane.round_qtx = scs_ptr->quants_8bit.v_round[q_index];
+            candidate_plane.dequant_qtx = scs_ptr->deq_8bit.v_dequant_qtx[q_index];
         }
     }
     else {
         if (component_type == COMPONENT_LUMA) {
-            candidate_plane.quant_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.y_quant[q_index];
-            candidate_plane.quant_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.y_quant_fp[q_index];
-            candidate_plane.round_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.y_round_fp[q_index];
-            candidate_plane.quant_shift_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.y_quant_shift[q_index];
-            candidate_plane.zbin_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.y_zbin[q_index];
-            candidate_plane.round_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.y_round[q_index];
-            candidate_plane.dequant_qtx = pcs_ptr->parent_pcs_ptr->deq_bd.y_dequant_qtx[q_index];
+            candidate_plane.quant_qtx = scs_ptr->quants_bd.y_quant[q_index];
+            candidate_plane.quant_fp_qtx = scs_ptr->quants_bd.y_quant_fp[q_index];
+            candidate_plane.round_fp_qtx = scs_ptr->quants_bd.y_round_fp[q_index];
+            candidate_plane.quant_shift_qtx = scs_ptr->quants_bd.y_quant_shift[q_index];
+            candidate_plane.zbin_qtx = scs_ptr->quants_bd.y_zbin[q_index];
+            candidate_plane.round_qtx = scs_ptr->quants_bd.y_round[q_index];
+            candidate_plane.dequant_qtx = scs_ptr->deq_bd.y_dequant_qtx[q_index];
         }
 
-        if (component_type == COMPONENT_CHROMA_CB) {
-            candidate_plane.quant_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.u_quant[q_index];
-            candidate_plane.quant_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.u_quant_fp[q_index];
-            candidate_plane.round_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.u_round_fp[q_index];
-            candidate_plane.quant_shift_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.u_quant_shift[q_index];
-            candidate_plane.zbin_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.u_zbin[q_index];
-            candidate_plane.round_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.u_round[q_index];
-            candidate_plane.dequant_qtx = pcs_ptr->parent_pcs_ptr->deq_bd.u_dequant_qtx[q_index];
+        else if (component_type == COMPONENT_CHROMA_CB) {
+            candidate_plane.quant_qtx = scs_ptr->quants_bd.u_quant[q_index];
+            candidate_plane.quant_fp_qtx = scs_ptr->quants_bd.u_quant_fp[q_index];
+            candidate_plane.round_fp_qtx = scs_ptr->quants_bd.u_round_fp[q_index];
+            candidate_plane.quant_shift_qtx = scs_ptr->quants_bd.u_quant_shift[q_index];
+            candidate_plane.zbin_qtx = scs_ptr->quants_bd.u_zbin[q_index];
+            candidate_plane.round_qtx = scs_ptr->quants_bd.u_round[q_index];
+            candidate_plane.dequant_qtx = scs_ptr->deq_bd.u_dequant_qtx[q_index];
         }
 
-        if (component_type == COMPONENT_CHROMA_CR) {
-            candidate_plane.quant_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.v_quant[q_index];
-            candidate_plane.quant_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.v_quant_fp[q_index];
-            candidate_plane.round_fp_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.v_round_fp[q_index];
-            candidate_plane.quant_shift_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.v_quant_shift[q_index];
-            candidate_plane.zbin_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.v_zbin[q_index];
-            candidate_plane.round_qtx = pcs_ptr->parent_pcs_ptr->quants_bd.v_round[q_index];
-            candidate_plane.dequant_qtx = pcs_ptr->parent_pcs_ptr->deq_bd.v_dequant_qtx[q_index];
+        else  {
+            candidate_plane.quant_qtx = scs_ptr->quants_bd.v_quant[q_index];
+            candidate_plane.quant_fp_qtx = scs_ptr->quants_bd.v_quant_fp[q_index];
+            candidate_plane.round_fp_qtx = scs_ptr->quants_bd.v_round_fp[q_index];
+            candidate_plane.quant_shift_qtx = scs_ptr->quants_bd.v_quant_shift[q_index];
+            candidate_plane.zbin_qtx = scs_ptr->quants_bd.v_zbin[q_index];
+            candidate_plane.round_qtx = scs_ptr->quants_bd.v_round[q_index];
+            candidate_plane.dequant_qtx = scs_ptr->deq_bd.v_dequant_qtx[q_index];
         }
     }
     const ScanOrder *const scan_order =
@@ -1485,7 +1494,7 @@ int32_t av1_quantize_inv_quantize(
 
     QuantParam qparam;
 
-    qparam.log_scale = av1_get_tx_scale(txsize);
+     qparam.log_scale = av1_get_tx_scale_tab[txsize];
     qparam.tx_size   = txsize;
     qparam.qmatrix   = q_matrix;
     qparam.iqmatrix  = iq_matrix;
@@ -1494,16 +1503,50 @@ int32_t av1_quantize_inv_quantize(
     EbBool perform_rdoq;
 
     // If rdoq_level is specified in the command line instruction, set perform_rdoq accordingly.
-    if (scs_ptr->static_config.rdoq_level != DEFAULT && md_context->pd_pass == PD_PASS_2)
-        perform_rdoq = scs_ptr->static_config.rdoq_level;
-    else {
         perform_rdoq = ((md_context->md_staging_skip_rdoq == EB_FALSE || is_encode_pass) &&
             md_context->rdoq_level);
+    const int dequant_shift = md_context->hbd_mode_decision ? pcs_ptr->parent_pcs_ptr->enhanced_picture_ptr->bit_depth - 5 : 3;
+    const int qstep = candidate_plane.dequant_qtx[1] /*[AC]*/ >> dequant_shift;
+
+    if (perform_rdoq && md_context->rdoq_ctrls.satd_factor != ((uint8_t)~0)) {
+
+        int satd = svt_aom_satd(coeff, n_coeffs);
+        const int shift = (MAX_TX_SCALE - av1_get_tx_scale_tab[txsize]);
+
+        satd = RIGHT_SIGNED_SHIFT(satd, shift);
+        satd >>= (pcs_ptr->parent_pcs_ptr->enhanced_picture_ptr->bit_depth - 8);
+
+        const int skip_block_trellis =
+            ((uint64_t)satd >
+            (uint64_t)md_context->rdoq_ctrls.satd_factor * qstep * sqrt_tx_pixels_2d[txsize]);
+
+        if (skip_block_trellis)
+            perform_rdoq = 0;
     }
 
-    if (perform_rdoq) {
+    if (perform_rdoq && ((!component_type && md_context->rdoq_ctrls.fp_q_l) || (component_type && md_context->rdoq_ctrls.fp_q_c))) {
         if ((bit_depth > EB_8BIT) || (is_encode_pass && scs_ptr->static_config.is_16bit_pipeline)) {
-            eb_av1_highbd_quantize_fp_facade((TranLow *)coeff,
+            svt_av1_highbd_quantize_fp_facade((TranLow *)coeff,
+                                              n_coeffs,
+                                              &candidate_plane,
+                                              quant_coeff,
+                                              (TranLow *)recon_coeff,
+                                              eob,
+                                              scan_order,
+                                              &qparam);
+        } else {
+            svt_av1_quantize_fp_facade((TranLow *)coeff,
+                                       n_coeffs,
+                                       &candidate_plane,
+                                       quant_coeff,
+                                       (TranLow *)recon_coeff,
+                                       eob,
+                                       scan_order,
+                                       &qparam);
+        }
+    } else {
+        if ((bit_depth > EB_8BIT) || (is_encode_pass && scs_ptr->static_config.is_16bit_pipeline)) {
+            svt_av1_highbd_quantize_b_facade((TranLow *)coeff,
                                              n_coeffs,
                                              &candidate_plane,
                                              quant_coeff,
@@ -1511,26 +1554,6 @@ int32_t av1_quantize_inv_quantize(
                                              eob,
                                              scan_order,
                                              &qparam);
-        } else {
-            eb_av1_quantize_fp_facade((TranLow *)coeff,
-                                      n_coeffs,
-                                      &candidate_plane,
-                                      quant_coeff,
-                                      (TranLow *)recon_coeff,
-                                      eob,
-                                      scan_order,
-                                      &qparam);
-        }
-    } else {
-        if ((bit_depth > EB_8BIT) || (is_encode_pass && scs_ptr->static_config.is_16bit_pipeline)) {
-            eb_av1_highbd_quantize_b_facade((TranLow *)coeff,
-                                            n_coeffs,
-                                            &candidate_plane,
-                                            quant_coeff,
-                                            (TranLow *)recon_coeff,
-                                            eob,
-                                            scan_order,
-                                            &qparam);
         } else {
             av1_quantize_b_facade_ii((TranLow *)coeff,
                                      coeff_stride,
@@ -1548,23 +1571,23 @@ int32_t av1_quantize_inv_quantize(
 
     if (perform_rdoq && *eob != 0) {
         // Perform rdoq
-        eb_av1_optimize_b(md_context,
-                          txb_skip_context,
-                          dc_sign_context,
-                          (TranLow *)coeff,
-                          coeff_stride,
-                          n_coeffs,
-                          &candidate_plane,
-                          quant_coeff,
-                          (TranLow *)recon_coeff,
-                          eob,
-                          scan_order,
-                          &qparam,
-                          txsize,
-                          tx_type,
-                          is_inter,
-                          lambda,
-                          (component_type == COMPONENT_LUMA) ? 0 : 1);
+        svt_av1_optimize_b(md_context,
+                           txb_skip_context,
+                           dc_sign_context,
+                           (TranLow *)coeff,
+                           coeff_stride,
+                           n_coeffs,
+                           &candidate_plane,
+                           quant_coeff,
+                           (TranLow *)recon_coeff,
+                           eob,
+                           scan_order,
+                           &qparam,
+                           txsize,
+                           tx_type,
+                           is_inter,
+                           lambda,
+                           (component_type == COMPONENT_LUMA) ? 0 : 1);
     }
 
     *count_non_zero_coeffs = *eob;
@@ -1619,6 +1642,7 @@ void product_full_loop(ModeDecisionCandidateBuffer *candidate_buffer,
             pcs_ptr->parent_pcs_ptr->aligned_height - (context_ptr->sb_origin_y + tx_org_y));
     context_ptr->luma_txb_skip_context = 0;
     context_ptr->luma_dc_sign_context  = 0;
+    if (!context_ptr->shut_skip_ctx_dc_sign_update)
     get_txb_ctx(pcs_ptr,
                 COMPONENT_LUMA,
                 context_ptr->full_loop_luma_dc_sign_level_coeff_neighbor_array,
@@ -1644,7 +1668,7 @@ void product_full_loop(ModeDecisionCandidateBuffer *candidate_buffer,
         context_ptr->hbd_mode_decision ? EB_10BIT : EB_8BIT,
         candidate_buffer->candidate_ptr->transform_type[txb_itr],
         PLANE_TYPE_Y,
-        DEFAULT_SHAPE);
+        context_ptr->pf_ctrls.pf_shape);
 
     int32_t seg_qp = pcs_ptr->parent_pcs_ptr->frm_hdr.segmentation_params.segmentation_enabled
                          ? pcs_ptr->parent_pcs_ptr->frm_hdr.segmentation_params
@@ -1698,23 +1722,23 @@ void product_full_loop(ModeDecisionCandidateBuffer *candidate_buffer,
                                         PLANE_TYPE_Y,
                                         (uint32_t)candidate_buffer->candidate_ptr->eob[0][txb_itr]);
         } else {
-            picture_copy(candidate_buffer->prediction_ptr,
-                         txb_origin_index,
-                         0,
-                         candidate_buffer->recon_ptr,
-                         txb_origin_index,
-                         0,
-                         context_ptr->blk_geom->tx_width[tx_depth][txb_itr],
-                         context_ptr->blk_geom->tx_height[tx_depth][txb_itr],
-                         0,
-                         0,
-                         PICTURE_BUFFER_DESC_Y_FLAG,
-                         context_ptr->hbd_mode_decision);
+            svt_av1_picture_copy(candidate_buffer->prediction_ptr,
+                                 txb_origin_index,
+                                 0,
+                                 candidate_buffer->recon_ptr,
+                                 txb_origin_index,
+                                 0,
+                                 context_ptr->blk_geom->tx_width[tx_depth][txb_itr],
+                                 context_ptr->blk_geom->tx_height[tx_depth][txb_itr],
+                                 0,
+                                 0,
+                                 PICTURE_BUFFER_DESC_Y_FLAG,
+                                 context_ptr->hbd_mode_decision);
         }
 
         EbSpatialFullDistType spatial_full_dist_type_fun = context_ptr->hbd_mode_decision
-                                                               ? full_distortion_kernel16_bits
-                                                               : spatial_full_distortion_kernel;
+                                                                ? svt_full_distortion_kernel16_bits
+                                                                : svt_spatial_full_distortion_kernel;
 
         txb_full_distortion[0][DIST_CALC_PREDICTION] =
             spatial_full_dist_type_fun(input_picture_ptr->buffer_y,
@@ -1762,7 +1786,7 @@ void product_full_loop(ModeDecisionCandidateBuffer *candidate_buffer,
         txb_full_distortion[0][DIST_CALC_RESIDUAL] += context_ptr->three_quad_energy;
         txb_full_distortion[0][DIST_CALC_PREDICTION] += context_ptr->three_quad_energy;
         TxSize  tx_size = context_ptr->blk_geom->txsize[tx_depth][txb_itr];
-        int32_t shift   = (MAX_TX_SCALE - av1_get_tx_scale(tx_size)) * 2;
+        int32_t shift = (MAX_TX_SCALE - av1_get_tx_scale_tab[tx_size]) * 2;
         txb_full_distortion[0][DIST_CALC_RESIDUAL] =
             RIGHT_SIGNED_SHIFT(txb_full_distortion[0][DIST_CALC_RESIDUAL], shift);
         txb_full_distortion[0][DIST_CALC_PREDICTION] =
@@ -1878,6 +1902,7 @@ void full_loop_r(SuperBlock *sb_ptr, ModeDecisionCandidateBuffer *candidate_buff
 
         context_ptr->cb_txb_skip_context = 0;
         context_ptr->cb_dc_sign_context  = 0;
+        if (!context_ptr->shut_skip_ctx_dc_sign_update)
         get_txb_ctx(pcs_ptr,
                     COMPONENT_CHROMA,
                     context_ptr->cb_dc_sign_level_coeff_neighbor_array,
@@ -1890,6 +1915,7 @@ void full_loop_r(SuperBlock *sb_ptr, ModeDecisionCandidateBuffer *candidate_buff
 
         context_ptr->cr_txb_skip_context = 0;
         context_ptr->cr_dc_sign_context  = 0;
+        if (!context_ptr->shut_skip_ctx_dc_sign_update)
         get_txb_ctx(pcs_ptr,
                     COMPONENT_CHROMA,
                     context_ptr->cr_dc_sign_level_coeff_neighbor_array,
@@ -1932,7 +1958,7 @@ void full_loop_r(SuperBlock *sb_ptr, ModeDecisionCandidateBuffer *candidate_buff
                 context_ptr->hbd_mode_decision ? EB_10BIT : EB_8BIT,
                 candidate_buffer->candidate_ptr->transform_type_uv,
                 PLANE_TYPE_UV,
-                DEFAULT_SHAPE);
+                context_ptr->pf_ctrls.pf_shape);
 
             int32_t seg_qp =
                 pcs_ptr->parent_pcs_ptr->frm_hdr.segmentation_params.segmentation_enabled
@@ -1985,18 +2011,18 @@ void full_loop_r(SuperBlock *sb_ptr, ModeDecisionCandidateBuffer *candidate_buff
                         PLANE_TYPE_UV,
                         (uint32_t)candidate_buffer->candidate_ptr->eob[1][txb_itr]);
                 else
-                    picture_copy(candidate_buffer->prediction_ptr,
-                                 0,
-                                 tu_cb_origin_index,
-                                 candidate_buffer->recon_ptr,
-                                 0,
-                                 tu_cb_origin_index,
-                                 0,
-                                 0,
-                                 context_ptr->blk_geom->tx_width_uv[tx_depth][txb_itr],
-                                 context_ptr->blk_geom->tx_height_uv[tx_depth][txb_itr],
-                                 PICTURE_BUFFER_DESC_Cb_FLAG,
-                                 context_ptr->hbd_mode_decision);
+                    svt_av1_picture_copy(candidate_buffer->prediction_ptr,
+                                         0,
+                                         tu_cb_origin_index,
+                                         candidate_buffer->recon_ptr,
+                                         0,
+                                         tu_cb_origin_index,
+                                         0,
+                                         0,
+                                         context_ptr->blk_geom->tx_width_uv[tx_depth][txb_itr],
+                                         context_ptr->blk_geom->tx_height_uv[tx_depth][txb_itr],
+                                         PICTURE_BUFFER_DESC_Cb_FLAG,
+                                         context_ptr->hbd_mode_decision);
             }
         }
 
@@ -2019,7 +2045,7 @@ void full_loop_r(SuperBlock *sb_ptr, ModeDecisionCandidateBuffer *candidate_buff
                 context_ptr->hbd_mode_decision ? EB_10BIT : EB_8BIT,
                 candidate_buffer->candidate_ptr->transform_type_uv,
                 PLANE_TYPE_UV,
-                DEFAULT_SHAPE);
+                context_ptr->pf_ctrls.pf_shape);
             int32_t seg_qp =
                 pcs_ptr->parent_pcs_ptr->frm_hdr.segmentation_params.segmentation_enabled
                     ? pcs_ptr->parent_pcs_ptr->frm_hdr.segmentation_params
@@ -2072,18 +2098,18 @@ void full_loop_r(SuperBlock *sb_ptr, ModeDecisionCandidateBuffer *candidate_buff
                         PLANE_TYPE_UV,
                         (uint32_t)candidate_buffer->candidate_ptr->eob[2][txb_itr]);
                 else
-                    picture_copy(candidate_buffer->prediction_ptr,
-                                 0,
-                                 tu_cb_origin_index,
-                                 candidate_buffer->recon_ptr,
-                                 0,
-                                 tu_cb_origin_index,
-                                 0,
-                                 0,
-                                 context_ptr->blk_geom->tx_width_uv[tx_depth][txb_itr],
-                                 context_ptr->blk_geom->tx_height_uv[tx_depth][txb_itr],
-                                 PICTURE_BUFFER_DESC_Cr_FLAG,
-                                 context_ptr->hbd_mode_decision);
+                    svt_av1_picture_copy(candidate_buffer->prediction_ptr,
+                                         0,
+                                         tu_cb_origin_index,
+                                         candidate_buffer->recon_ptr,
+                                         0,
+                                         tu_cb_origin_index,
+                                         0,
+                                         0,
+                                         context_ptr->blk_geom->tx_width_uv[tx_depth][txb_itr],
+                                         context_ptr->blk_geom->tx_height_uv[tx_depth][txb_itr],
+                                         PICTURE_BUFFER_DESC_Cr_FLAG,
+                                         context_ptr->hbd_mode_decision);
             }
         }
 
@@ -2167,9 +2193,9 @@ void cu_full_distortion_fast_txb_mode_r(
                       context_ptr->residual_quant_coeff_ptr->stride_cb)) >>
                     1;
 
-                EbSpatialFullDistType spatial_full_dist_type_fun =
-                    context_ptr->hbd_mode_decision ? full_distortion_kernel16_bits
-                                                   : spatial_full_distortion_kernel;
+                EbSpatialFullDistType spatial_full_dist_type_fun = context_ptr->hbd_mode_decision
+                                                    ? svt_full_distortion_kernel16_bits
+                                                    : svt_spatial_full_distortion_kernel;
 
                 txb_full_distortion[1][DIST_CALC_PREDICTION] =
                     spatial_full_dist_type_fun(input_picture_ptr->buffer_cb,
@@ -2239,7 +2265,7 @@ void cu_full_distortion_fast_txb_mode_r(
                     count_nonzero_coeffs_all[2],
                     component_type);
                 TxSize tx_size = context_ptr->blk_geom->txsize_uv[tx_depth][txb_itr];
-                const int32_t chroma_shift = (MAX_TX_SCALE - av1_get_tx_scale(tx_size)) * 2;
+                const int32_t chroma_shift = (MAX_TX_SCALE - av1_get_tx_scale_tab[tx_size]) * 2;
                 txb_full_distortion[1][DIST_CALC_RESIDUAL] =
                     RIGHT_SIGNED_SHIFT(txb_full_distortion[1][DIST_CALC_RESIDUAL], chroma_shift);
                 txb_full_distortion[1][DIST_CALC_PREDICTION] =
@@ -2375,12 +2401,8 @@ void compute_depth_costs(ModeDecisionContext *context_ptr, SequenceControlSet *s
 
     context_ptr->md_local_blk_unit[above_depth_mds].left_neighbor_mode =
         context_ptr->md_local_blk_unit[curr_depth_blk0_mds].left_neighbor_mode;
-    context_ptr->md_local_blk_unit[above_depth_mds].left_neighbor_depth =
-        context_ptr->md_local_blk_unit[curr_depth_blk0_mds].left_neighbor_depth;
     context_ptr->md_local_blk_unit[above_depth_mds].top_neighbor_mode =
         context_ptr->md_local_blk_unit[curr_depth_blk0_mds].top_neighbor_mode;
-    context_ptr->md_local_blk_unit[above_depth_mds].top_neighbor_depth =
-        context_ptr->md_local_blk_unit[curr_depth_blk0_mds].top_neighbor_depth;
     context_ptr->md_local_blk_unit[above_depth_mds].left_neighbor_partition =
         context_ptr->md_local_blk_unit[curr_depth_blk0_mds].left_neighbor_partition;
     context_ptr->md_local_blk_unit[above_depth_mds].above_neighbor_partition =
@@ -2515,6 +2537,7 @@ uint32_t d2_inter_depth_block_decision(ModeDecisionContext *context_ptr, uint32_
             } else {
                 context_ptr->md_local_blk_unit[parent_depth_idx_mds].cost = current_depth_cost;
                 context_ptr->md_blk_arr_nsq[parent_depth_idx_mds].part    = PARTITION_SPLIT;
+                context_ptr->md_blk_arr_nsq[parent_depth_idx_mds].split_flag = EB_TRUE;
             }
 
             //setup next parent inter depth
@@ -2569,12 +2592,8 @@ void compute_depth_costs_md_skip(ModeDecisionContext *context_ptr, SequenceContr
 
     context_ptr->md_local_blk_unit[above_depth_mds].left_neighbor_mode =
         context_ptr->md_local_blk_unit[curr_depth_blk0_mds].left_neighbor_mode;
-    context_ptr->md_local_blk_unit[above_depth_mds].left_neighbor_depth =
-        context_ptr->md_local_blk_unit[curr_depth_blk0_mds].left_neighbor_depth;
     context_ptr->md_local_blk_unit[above_depth_mds].top_neighbor_mode =
         context_ptr->md_local_blk_unit[curr_depth_blk0_mds].top_neighbor_mode;
-    context_ptr->md_local_blk_unit[above_depth_mds].top_neighbor_depth =
-        context_ptr->md_local_blk_unit[curr_depth_blk0_mds].top_neighbor_depth;
     context_ptr->md_local_blk_unit[above_depth_mds].left_neighbor_partition =
         context_ptr->md_local_blk_unit[curr_depth_blk0_mds].left_neighbor_partition;
     context_ptr->md_local_blk_unit[above_depth_mds].above_neighbor_partition =

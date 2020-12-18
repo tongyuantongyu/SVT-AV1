@@ -36,14 +36,13 @@ typedef struct MvCandidate {
 } MvCandidate;
 // move this to a new file with ctor & dtor
 typedef struct MeSbResults {
-    EbDctor       dctor;
-    uint32_t      sb_distortion;
-    uint8_t *     total_me_candidate_index;
+    EbDctor      dctor;
+    uint32_t     sb_distortion;
+    uint8_t *    total_me_candidate_index;
     MvCandidate *me_mv_array;
     MeCandidate *me_candidate_array;
     // [PU][LAST, LAST2, LAST3, GOLD, BWD, ALT2, ALT] if MRP Mode 0,
     // [PU][LAST, LAST2, BWD, ALT2] if MRP Mode 1,
-    uint8_t do_comp[MAX_NUM_OF_REF_PIC_LIST][REF_LIST_MAX_DEPTH];
 } MeSbResults;
 #ifdef __cplusplus
 }

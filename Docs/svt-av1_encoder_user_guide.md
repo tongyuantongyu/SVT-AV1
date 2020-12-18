@@ -152,7 +152,7 @@ The encoder parameters present in the `Sample.cfg` file are listed in this table
 | **FrameRateDenominator** | --fps-denom | [0 - 2^64 -1] | 0 | Frame rate denominator e.g. 100 |
 | **EncoderBitDepth** | --input-depth | [8 , 10] | 8 | specifies the bit depth of the input video |
 | **Encoder16BitPipeline** | --16bit-pipeline | [0 , 1] | 0 | Bit depth for enc-dec(0: lbd[default], 1: hbd) |
-| **HierarchicalLevels** | --hierarchical-levels | [3 - 4] | 4 | 0 : Flat4: 5-Level HierarchyMinigop Size = (2^HierarchicalLevels) (e.g. 3 == > 7B pyramid, 4 == > 15B Pyramid) |
+| **HierarchicalLevels** | --hierarchical-levels | [0 - 5] | 4 | 0 : Flat4: 5-Level HierarchyMinigop Size = (2^HierarchicalLevels) (e.g. 0 == > 0B pyramid, 1 == > 1B pyramid, 2 == > 3B pyramid, 3 == > 7B pyramid, 4 == > 15B Pyramid) |
 | **PredStructure** | --pred-struct | [0-2] | 2 | Set prediction structure( 0: low delay P, 1: low delay B, 2: random access [default]) |
 | **HighDynamicRangeInput** | --enable-hdr | [0-1] | 0 | Enable high dynamic range(0: OFF[default], ON: 1) |
 | **Asm** | --asm |  [0 - 11] or [c, mmx, sse, sse2, sse3, ssse3, sse4_1, sse4_2, avx, avx2, avx512, max] | 11 or max | Limit assembly instruction set ("0" is equivalent to "c", "1" is "mmx" etc, max value is "11" or "max"), by default select highest assembly instruction that is supported by CPU |
@@ -164,6 +164,7 @@ The encoder parameters present in the `Sample.cfg` file are listed in this table
 | **Configuration file parameter** | **Command line** | **Range** | **Default** | **Description** |
 | --- | --- | --- | --- | --- |
 | **RateControlMode** | --rc | [0 - 2] | 0 | 0 = CQP , 1 = VBR , 2 = CVBR |
+| **QP** | -q | [0 - 63] | 50 | Quantization parameter used when RateControl is set to 0 |
 | **TargetBitRate** | --tbr | [1 - 4294967] | 7000 | Target bitrate in kilobits per second when RateControlMode is set to 1, or 2 |
 | **UseQpFile** | --use-q-file | [0-1] | 0 | When set to 1, overwrite the picture qp assignment using qp values in QpFile |
 | **QpFile** | --qpfile | any string | Null | Path to qp file |
@@ -171,6 +172,35 @@ The encoder parameters present in the `Sample.cfg` file are listed in this table
 | **MinQpAllowed** | --min-qp | [0 - 63] | Null | Minimum (best) quantizer[0-63] |
 | **AdaptiveQuantization** | --adaptive-quantization | [0 - 2] | 0 | 0 = OFF , 1 = variance base using segments , 2 = Deltaq pred efficiency (default) |
 | **VBVBufSize** | --vbv-bufsize | [1 - 4294967] | 1 second TargetBitRate | VBV Buffer Size when RateControl is 2. |
+| **UseFixedQIndexOffsets** | --use-fixed-qindex-offsets | [0 - 1] | 0 | 0 = OFF, 1 = enable fixed qindex offset based on temporal layer and frame type when rc mode is 0. qindex offsets are specified by the following arguments |
+| **QIndexOffsets** | --qindex-offsets | [v0,v1,..,vn] | [0,0,..,0] | list of qindex offsets vi, enclosed in [], seperated by ,. vi is in the range of [-256,255]. this argument should be used after hierarchical-levels, the number of qindex offsets equals to hierarchical-levels + 1 |
+| **KeyFrameQIndexOffset** | --key-frame-qindex-offset | [-256, 255] | 0 | qindex offset for Key frame |
+| **ChromaQIndexOffsets** | --chroma-qindex-offsets | [v0,v1,..,vn] | [0,0,..,0] | list of qindex offset vi, enclosed in [], seperated by ,. vi is in the range of [-256, 255]. this argument should be used after hierarchical-levels, the number of qindex offsets equals to hierarchical-levels + 1 |
+| **KeyFrameChromaQIndexOffset** | --key-frame-chroma-qindex-offset | [-256, 255] | 0 | chroma qindex offset for Key frame |
+
+
+use-fixed-qindex-offsets and associtated arguments (hierarchical-levels, qindex-offsets, chroma-qindex-offsets, key-frame-qindex-offset, key-frame-chroma-qindex-offset) are used together to specify the qindex offsets based on frame type and temporal layer when rc mode = 0.
+
+qp value specified by -q argument is assigned to the pictures at the highest temporal layer. it is first converted to qindex, then corresponding qindex offsets are added on top of it based on frame types (Key/Inter) and temporal layer id.
+
+qindex offset can be negative. the final qindex value will be clamped in the valid min/max qindex range.
+
+for chroma plane, after deciding the qindex for the luma plane, corresponding chroma qindex offsets are added on top of the luma plane qindex based on frame types and temporal layer id.
+
+--qindex-offsets and --chroma-qindex-offsets have to be used after the --hierachical-levels parameter. number of qindex offsets should be hierachical levels plus 1.
+
+an example command line is:
+"--rc 0 -q 42 --hierarchical-levels 3 --use-fixed-qindex-offsets 1 --qindex-offsets [-12,-8,-4,0] --key-frame-qindex-offset -20 --key-frame-chroma-qindex-offset -6 --chroma-qindex-offsets [-6,0,12,24]"
+
+for this command line, corresponding qindex are:
+
+| **Frame Type** | **Luma qindex** | **Chroma qindex** |
+| --- | --- | --- |
+| **Key Frame** | 148 (42x4 - 20) | 142 (148 - 6) |
+| **Layer0 Frame** | 156 (42x4 - 12) | 150 (156 - 6) |
+| **Layer1 Frame** | 160 (42x4 - 8) | 160 (160 + 0) |
+| **Layer2 Frame** | 164 (42x4 - 4) | 176 (164 + 12) |
+| **Layer3 Frame** | 168 (42x4 + 0) | 192 (168 + 24) |
 
 #### Twopass Options
 | **Configuration file parameter** | **Command line** | **Range** | **Default** | **Description** |
@@ -185,12 +215,13 @@ The encoder parameters present in the `Sample.cfg` file are listed in this table
 | **MaxSectionPct** | --maxsection-pct | [0 - ] | 2000 | 2pass VBR GOP max bitrate (percent of target) |
 | **UnderShortPct** | --undershoot-pct | [0 - 100] | 25 | Datarate undershoot (min) target (percent) |
 | **OverShortPct** | --overshoot-pct | [0 - 100] | 25 | Datarate overshoot (max) target (percent) |
+| **RecodeLoop** | --recode-loop | [0 - 3] | 2 | Recode loop levels for 2pass VBR (0=disable reencode, 1=reencode key frames, 2=reencode base layer frames, 3=reencode all frames) |
 
 #### Keyframe Placement Options
 | **Configuration file parameter** | **Command line** | **Range** | **Default** | **Description** |
 | --- | --- | --- | --- | --- |
-| **IntraPeriod** | --keyint | [-2 - 255] | -1 | Intra period interval(frames) -2: default intra period , -1: No intra update or [0-255] |
-| **IntraRefreshType** | --irefresh-type | [1 - 2] | 1 | 1: CRA (Open GOP)2: IDR (Closed GOP) |
+| **IntraPeriod** | --keyint | [-2 - 2^31-2] | -2 | Intra period interval(frames) -2: default intra period , -1: No intra update or an integer >= 0. if RateControlMode >= 1 intra-period limited to [-2, 255] |
+| **IntraRefreshType** | --irefresh-type | [1 - 2] | 2 | 1: CRA (Open GOP), 2: IDR (Closed GOP)[default] |
 
 #### AV1 Specific Options
 | **Configuration file parameter** | **Command line** | **Range** | **Default** | **Description** |
@@ -199,7 +230,6 @@ The encoder parameters present in the `Sample.cfg` file are listed in this table
 | **CompressedTenBitFormat** | --compressed-ten-bit-format | [0-1] | 0 | Offline packing of the 2bits: requires two bits packed input (0: OFF, 1: ON) |
 | **TileRow** | --tile-rows | [0-6] | 0 | log2 of tile rows |
 | **TileCol** | --tile-columns | [0-6] | 0 | log2 of tile columns |
-| **QP** | -q | [0 - 63] | 50 | Quantization parameter used when RateControl is set to 0 |
 | **LookAheadDistance** | --lookahead | [0 - 120] | 33 | When RateControlMode is set to 1 or 2 it's strongly recommended to set this parameter to be equal to the Intra period value (such is the default set by the encoder). When RateControlMode  is set to 0, it is recommended for this value to be set to a size of a minigop (e.g. 16 for --hierarchichal-levels 4) |
 | **LoopFilterDisable** | --disable-dlf | [0-1] | 0 | Disable loop filter(0: loop filter enabled[default] ,1: loop filter disabled) |
 | **EnableTPLModel** | --enable-tpl-la | [0-1] | 1 | RDO based on frame temporal dependency (0: off, 1: backward source based)|

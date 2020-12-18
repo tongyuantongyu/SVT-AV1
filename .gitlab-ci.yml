@@ -1,0 +1,449 @@
+stages:
+  - compile
+  - test
+
+#
+# General checks
+#
+
+Style check:
+  stage: .pre
+  image: registry.gitlab.com/aomediacodec/aom-testing/alpine3
+  script:
+    - ./test/stylecheck.sh
+
+Static analysis (cppcheck):
+  stage: compile
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu1804
+  cache:
+    key: cppcheck
+    paths:
+      - .cppcheck
+    policy: pull-push
+  script:
+    - cmake -B Build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    - |
+      mkdir -p .cppcheck
+      cppcheck \
+        --project=Build/compile_commands.json \
+        --error-exitcode=1 \
+        --enable=all \
+        -j 2 \
+        -rp=$PWD \
+        -ithird_party \
+        --cppcheck-build-dir=.cppcheck
+
+#
+# Linux CI Jobs
+#
+.linux-compiler-base:
+  stage: compile
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu2004
+  variables:
+    CFLAGS: -Werror -Wshadow $EXTRA_CFLAGS
+    CXXFLAGS: -Werror -Wshadow $EXTRA_CXXFLAGS
+    CCACHE_DIR: $CI_PROJECT_DIR/.ccache
+  cache:
+    key: ${CI_JOB_NAME}
+    paths:
+      - .ccache
+    policy: pull-push
+  script:
+    - ccache -s
+    - eval cmake -GNinja -B Build -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:=Release} -DBUILD_SHARED_LIBS=OFF $EXTRA_CMAKE_FLAGS
+    - cmake --build Build --config $CMAKE_BUILD_TYPE --target install
+    - ccache -s
+
+Linux (Clang 6):
+  extends: .linux-compiler-base
+  variables:
+    CC: clang-6.0
+    CXX: clang++-6.0
+
+Linux (Clang 10):
+  extends: .linux-compiler-base
+  variables:
+    CC: clang-10
+    CXX: clang++-10
+
+Linux (GCC 4):
+  extends: .linux-compiler-base
+  image: registry.gitlab.com/aomediacodec/aom-testing/centos7
+
+Linux (Valgrind):
+  extends: .linux-compiler-base
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu1804
+  variables:
+    EXTRA_CFLAGS: -Wno-error -g
+    EXTRA_CXXFLAGS: -Wno-error -g
+    EXTRA_CMAKE_FLAGS: -DCMAKE_OUTPUT_DIRECTORY=valgrind
+    CMAKE_BUILD_TYPE: Debug
+  artifacts:
+    untracked: false
+    expire_in: 30 days
+    paths:
+      - valgrind/
+
+Linux (GCC 7):
+  extends: .linux-compiler-base
+  variables:
+    CC: gcc-7
+    CXX: g++-7
+
+Linux (GCC 8):
+  extends: .linux-compiler-base
+  variables:
+    CC: gcc-8
+    CXX: g++-8
+
+Linux (GCC 9):
+  extends: .linux-compiler-base
+  variables:
+    CC: gcc-9
+    CXX: g++-9
+
+Linux (GCC 10):
+  extends: .linux-compiler-base
+  variables:
+    CC: gcc-10
+    CXX: g++-10
+    LDFLAGS: -static -static-libgcc -static-libstdc++
+    GIT_DEPTH: 0
+  artifacts:
+    untracked: false
+    expire_in: 30 days
+    paths:
+      - Bin/Release/SvtAv1EncApp
+      - Bin/Release/SvtAv1DecApp
+
+Linux (GCC 10, Tests, Static):
+  extends: .linux-compiler-base
+  variables:
+    CC: gcc-10
+    CXX: g++-10
+    EXTRA_CFLAGS: -Wno-error -g
+    EXTRA_CXXFLAGS: -Wno-error -g
+    LDFLAGS: -static -static-libgcc -static-libstdc++
+    EXTRA_CMAKE_FLAGS: -DBUILD_TESTING=ON -DBUILD_APPS=OFF
+  artifacts:
+    untracked: false
+    expire_in: 1 day
+    paths:
+      - Bin/Release/SvtAv1UnitTests
+      - Bin/Release/SvtAv1ApiTests
+      - Bin/Release/SvtAv1E2ETests
+
+.sanitizer compile:
+  extends: .linux-compiler-base
+  variables:
+    CC: clang-10
+    CXX: clang++-10
+    CMAKE_BUILD_TYPE: Debug
+  artifacts:
+    untracked: false
+    expire_in: 30 days
+    paths:
+      - address/
+      - memory/
+      - thread/
+
+Linux (Address sanitizer):
+  extends: .sanitizer compile
+  variables:
+    EXTRA_CFLAGS: -fsanitize=address
+    EXTRA_CXXFLAGS: -fsanitize=address
+    LDFLAGS: -fsanitize=address
+    EXTRA_CMAKE_FLAGS: -DCMAKE_OUTPUT_DIRECTORY=address
+
+Linux (Memory sanitizer):
+  extends: .sanitizer compile
+  variables:
+    EXTRA_CFLAGS: -fsanitize=memory -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-memory-track-origins
+    EXTRA_CXXFLAGS: -fsanitize=memory -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-memory-track-origins
+    LDFLAGS: -fsanitize=memory -fsanitize-memory-track-origins
+    EXTRA_CMAKE_FLAGS: -DCMAKE_OUTPUT_DIRECTORY=memory
+
+Linux (Thread sanitizer):
+  extends: .sanitizer compile
+  variables:
+    EXTRA_CFLAGS: -fsanitize=thread
+    EXTRA_CXXFLAGS: -fsanitize=thread
+    LDFLAGS: -fsanitize=thread
+    EXTRA_CMAKE_FLAGS: -DCMAKE_OUTPUT_DIRECTORY=thread
+
+.tests:
+  stage: test
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu2004
+  before_script:
+    - zstd -d /video.tar.zst
+    - tar xf /video.tar
+
+Valgrind:
+  extends: .tests
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu1804
+  allow_failure: true
+  script:
+    # --error-limit=no --leak-check=full --show-leak-kinds=all makes the log very huge and takes around 16 minutes
+    - valgrind --error-exitcode=1 --track-origins=yes --suppressions=/usr/lib/valgrind/debian.supp -- ./valgrind/SvtAv1EncApp --preset 6 -i akiyo_cif.y4m -n 10 -b test1.ivf
+  needs:
+    - 'Linux (Valgrind)'
+
+Valgrind (Pass 1):
+  extends: .tests
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu1804
+  allow_failure: true
+  script:
+    - valgrind --error-exitcode=1 --track-origins=yes --suppressions=/usr/lib/valgrind/debian.supp -- ./valgrind/SvtAv1EncApp --preset 6 --pass 1 -i akiyo_cif.y4m -n 10 -b test1.ivf
+  needs:
+    - 'Linux (Valgrind)'
+
+.sanitizer test:
+  extends: .tests
+  image: registry.gitlab.com/aomediacodec/aom-testing/ubuntu2004
+  variables:
+    LSAN_OPTIONS: "verbosity=2:color=always:log_threads=1:report_objects=1"
+    ASAN_OPTIONS: "verbosity=2:color=always:print_cmdline=1:strict_string_checks=1"
+    MSAN_OPTIONS: "verbosity=2:color=always"
+    TSAN_OPTIONS: "verbosity=2:color=always:suppressions=./.github/workflows/sanitizers-known-warnings.txt"
+  script:
+    - |
+      command="$PWD/$SANITIZER/SvtAv1EncApp -i Chimera-Aerial_480x264_2997fps_10bit_420_150frames.y4m ${svt_asm:+--asm $svt_asm} -n 60 --preset 8 -b output.ivf"
+      case $SANITIZER in
+      address|memory) $command ;;
+      *) gdb -q -ex "handle SIG32 nostop" -ex r -ex bt -ex q --return-child-result --args $command ;;
+      esac
+
+Linux (Address sanitizer) test:
+  extends: .sanitizer test
+  variables:
+    SANITIZER: address
+  needs:
+    - 'Linux (Address sanitizer)'
+
+Linux (Memory sanitizer) test:
+  extends: .sanitizer test
+  variables:
+    SANITIZER: memory
+    svt_asm: 0
+  needs:
+    - 'Linux (Memory sanitizer)'
+
+Linux (Thread sanitizer) test:
+  extends: .sanitizer test
+  allow_failure: true
+  variables:
+    SANITIZER: thread
+  needs:
+    - 'Linux (Thread sanitizer)'
+
+.unit tests:
+  extends: .tests
+  parallel: 50
+  variables:
+    GTEST_TOTAL_SHARDS: 50
+    GTEST_OUTPUT: "xml:report.xml"
+
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+  needs:
+    - 'Linux (GCC 10, Tests, Static)'
+
+Linux Unit Tests:
+  extends: .unit tests
+  script:
+    - export GTEST_SHARD_INDEX=$((CI_NODE_INDEX - 1))
+    - mkdir -p unittests
+    - ./Bin/Release/SvtAv1UnitTests
+
+Linux E2E Tests:
+  extends: .unit tests
+  script:
+    - export GTEST_SHARD_INDEX=$((CI_NODE_INDEX - 1))
+    - export SVT_AV1_TEST_VECTOR_PATH=$PWD
+    - mkdir -p unittests
+    - mv test/vectors/* .
+    - ./Bin/Release/SvtAv1E2ETests --gtest_filter=-*DummySrcTest*
+
+
+#
+# macOS CI Jobs
+#
+.macos-compiler-base:
+  stage: compile
+  tags:
+    - macos-ci
+  variables:
+    VLC_PATH: /Users/videolanci/sandbox/bin
+    CFLAGS: -Werror -Wshadow $EXTRA_CFLAGS
+    CXXFLAGS: -Werror -Wshadow $EXTRA_CXXFLAGS
+  script:
+    - export PATH="${VLC_PATH}:${PATH}"
+    - eval cmake -G${CMAKE_GENERATOR:=Ninja} -B Build -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:=Release} $EXTRA_CMAKE_FLAGS
+    - cmake --build Build --config $CMAKE_BUILD_TYPE
+
+.macos-fetch-testdata: &macos-fetch-testdata |
+  curl -f -L -O --silent "https://gitlab.com/AOMediaCodec/aom-testing/-/raw/master/video.tar.zst"
+  zstd --stdout -d video.tar.zst | tar -xf -
+
+macOS (Xcode):
+  extends: .macos-compiler-base
+  variables:
+    CMAKE_GENERATOR: Xcode
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - Bin/Release/*
+
+macOS (Ninja, Static, Tests):
+  extends: .macos-compiler-base
+  variables:
+    EXTRA_CMAKE_FLAGS: -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=ON
+    EXTRA_CFLAGS: -Wno-error -g
+    EXTRA_CXXFLAGS: -Wno-error -g
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - Bin/Release/*
+
+macOS Unit Tests:
+  tags:
+    - macos-ci
+  stage: test
+  parallel: 10
+  variables:
+    GTEST_TOTAL_SHARDS: 10
+    GTEST_OUTPUT: "xml:report.xml"
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+  script:
+    - export GTEST_SHARD_INDEX=$((CI_NODE_INDEX - 1))
+    - ./Bin/Release/SvtAv1UnitTests
+  needs:
+    - 'macOS (Ninja, Static, Tests)'
+
+macOS E2E Tests:
+  tags:
+    - macos-ci
+  stage: test
+  parallel: 10
+  variables:
+    GTEST_TOTAL_SHARDS: 10
+    GTEST_OUTPUT: "xml:report.xml"
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+  script:
+    - export GTEST_SHARD_INDEX=$((CI_NODE_INDEX - 1))
+    - mkdir -p testvectors && export SVT_AV1_TEST_VECTOR_PATH="$PWD/testvectors"
+    - cmake -GNinja -B Build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+    - cmake --build Build --target TestVectors
+    - ./Bin/Release/SvtAv1E2ETests --gtest_filter=-*DummySrcTest*
+  needs:
+    - 'macOS (Ninja, Static, Tests)'
+
+macOS Enc Test:
+  tags:
+    - macos-ci
+  stage: test
+  script:
+    - *macos-fetch-testdata
+    - ./Bin/Release/SvtAv1EncApp --preset 0 -i "$SVT_ENCTEST_FILENAME" -n 3 -b "test-pr-${SVT_ENCTEST_BITNESS}bit-m0.ivf"
+    - ./Bin/Release/SvtAv1EncApp --preset 8 -i "$SVT_ENCTEST_FILENAME" -n 120 -b "test-pr-${SVT_ENCTEST_BITNESS}bit-m8.ivf"
+  parallel:
+    matrix:
+      - SVT_ENCTEST_FILENAME: "akiyo_cif.y4m"
+        SVT_ENCTEST_BITNESS: 8
+      - SVT_ENCTEST_FILENAME: "Chimera-Aerial_480x264_2997fps_10bit_420_150frames.y4m"
+        SVT_ENCTEST_BITNESS: 10
+  needs:
+    - 'macOS (Ninja, Static, Tests)'
+
+#
+# Window CI Jobs
+#
+.windows-ci-common:
+  tags:
+    - ci
+  before_script:
+    - |
+      $installPath = &"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationpath
+      Import-Module (Join-Path $installPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll")
+      Enter-VsDevShell -VsInstallPath $installPath -SkipAutomaticLocation
+
+.windows-fetch-testdata: &windows-fetch-testdata |
+  $ProgressPreference = 'SilentlyContinue'
+  Invoke-WebRequest -OutFile video.tar.zst -Uri https://gitlab.com/AOMediaCodec/aom-testing/-/raw/master/video.tar.zst
+  zstd -d video.tar.zst -o video.tar
+  tar -xf video.tar
+
+Win64 (Release, Tests):
+  extends: .windows-ci-common
+  stage: compile
+  script:
+    - '&"C:\Program Files\CMake\bin\cmake.exe" -B Build  -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DASM_NASM="C:\Program Files\NASM\nasm.exe"'
+    - '&"C:\Program Files\CMake\bin\cmake.exe" --build Build --config Release'
+  artifacts:
+    untracked: false
+    expire_in: 1 day
+    paths:
+      - Bin\Release\Release\*.exe
+      - Bin\Release\Release\*.dll
+      - Bin\Release\Release\*.pdb
+
+Win64 Unit Tests:
+  extends: .windows-ci-common
+  stage: test
+  parallel: 50
+  variables:
+    GTEST_TOTAL_SHARDS: 50
+    GTEST_OUTPUT: "xml:report.xml"
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+  script:
+    - $env:GTEST_SHARD_INDEX = $env:CI_NODE_INDEX - 1
+    - '&"Bin\Release\Release\SvtAv1UnitTests.exe" --gtest_filter=-*FFT*'
+  needs:
+    - 'Win64 (Release, Tests)'
+
+Win64 Enc Test:
+  extends: .windows-ci-common
+  stage: test
+  script:
+    - *windows-fetch-testdata
+    - '&"Bin\Release\Release\SvtAv1EncApp.exe" --preset 0 -i "$env:SVT_ENCTEST_FILENAME" -n 3 -b "test-pr-${env:SVT_ENCTEST_BITNESS}bit-m0.ivf"'
+    - '&"Bin\Release\Release\SvtAv1EncApp.exe" --preset 8 -i "$env:SVT_ENCTEST_FILENAME" -n 120 -b "test-pr-${env:SVT_ENCTEST_BITNESS}bit-m8.ivf"'
+  parallel:
+    matrix:
+      - SVT_ENCTEST_FILENAME: "akiyo_cif.y4m"
+        SVT_ENCTEST_BITNESS: 8
+      - SVT_ENCTEST_FILENAME: "Chimera-Aerial_480x264_2997fps_10bit_420_150frames.y4m"
+        SVT_ENCTEST_BITNESS: 10
+  needs:
+    - 'Win64 (Release, Tests)'
+
+Win64 E2E Tests:
+  extends: .windows-ci-common
+  stage: test
+  parallel: 10
+  variables:
+    GTEST_TOTAL_SHARDS: 10
+    GTEST_OUTPUT: "xml:report.xml"
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+  script:
+    - '[string]$env:SVT_AV1_TEST_VECTOR_PATH = New-Item -ItemType Directory -Force -Name "testdata"'
+    - '&"C:\Program Files\CMake\bin\cmake.exe" -B Build  -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DASM_NASM="C:\Program Files\NASM\nasm.exe"'
+    - '&"C:\Program Files\CMake\bin\cmake.exe" --build Build --target TestVectors'
+    - $env:GTEST_SHARD_INDEX = $env:CI_NODE_INDEX - 1
+    - '&"Bin\Release\Release\SvtAv1E2ETests.exe" --gtest_filter=-*DummySrcTest*'
+  needs:
+    - 'Win64 (Release, Tests)'

@@ -16,8 +16,12 @@ if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}")
                     "Please use the Build folder or create your own.")
 endif()
 
-project(svt-av1 VERSION 0.8.5
+project(svt-av1 VERSION 0.8.6
     LANGUAGES C CXX)
+
+if(POLICY CMP0063)
+  cmake_policy(SET CMP0063 NEW)
+endif()
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
 # Default build type to release if the generator does not has its own set of build types
@@ -29,19 +33,19 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(WARNING "32-bit is not supported")
 endif()
 
-file(WRITE ${CMAKE_BINARY_DIR}/conftest.c "
+option(COMPILE_C_ONLY "Compile only C code with no simds (autodetect, default off for x86)" OFF)
+
+include(CheckCSourceCompiles)
+
+check_c_source_compiles("
 #if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
 #else
 #error \"Non-x86\"
 #endif
-int main() {}
-")
+int main(void) {}
+" HAVE_X86_PLATFORM)
 
-try_compile(X86 ${CMAKE_BINARY_DIR} ${CMAKE_BINARY_DIR}/conftest.c)
-
-message(STATUS "x86 detected: ${X86}")
-
-if(X86)
+if(NOT COMPILE_C_ONLY AND HAVE_X86_PLATFORM)
     find_program(YASM_EXE yasm)
     option(ENABLE_NASM "Use nasm if available (Uses yasm by default if found)" OFF)
     if(YASM_EXE AND NOT CMAKE_ASM_NASM_COMPILER MATCHES "yasm" AND NOT ENABLE_NASM)
@@ -62,6 +66,7 @@ if(X86)
         endif()
     endif()
     enable_language(ASM_NASM)
+    add_definitions(-DARCH_X86_64=1)
 endif()
 
 include(GNUInstallDirs)
@@ -110,12 +115,13 @@ if(UNIX)
     endif()
 endif()
 
+# Always build with -fPIC
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 set(flags_to_test
     -Wextra
     -Wformat
-    -Wformat-security
-    -fPIE
-    -fPIC)
+    -Wformat-security)
 if(MSVC)
     list(INSERT flags_to_test 0 /W3)
     list(APPEND flags_to_test /MP)
@@ -134,7 +140,7 @@ else()
     if(MINGW)
         list(APPEND flags_to_test -mxsave -fno-asynchronous-unwind-tables)
     else()
-        list(APPEND flags_to_test -fstack-protector-strong -D_FORTIFY_SOURCE=2)
+        list(APPEND flags_to_test -fstack-protector-strong)
     endif()
 endif()
 
@@ -167,6 +173,18 @@ foreach(flag ${flags_to_test};${release_flags_to_test};${debug_flags_to_test})
         endif()
     endif()
 endforeach()
+
+if(CMAKE_C_FLAGS MATCHES ".*-march=native.*")
+    string(APPEND CMAKE_C_FLAGS " -mno-avx")
+endif()
+
+if(CMAKE_CXX_FLAGS MATCHES ".*-march=native.*")
+    string(APPEND CMAKE_CXX_FLAGS " -mno-avx")
+endif()
+
+if(CMAKE_C_FLAGS MATCHES "-O" AND NOT CMAKE_C_FLAGS MATCHES "-O0" AND NOT MINGW)
+    string(APPEND CMAKE_C_FLAGS " -D_FORTIFY_SOURCE=2")
+endif()
 
 if(CMAKE_ASM_NASM_OBJECT_FORMAT MATCHES "win")
     set(CMAKE_ASM_NASM_FLAGS_DEBUG "${CMAKE_ASM_NASM_FLAGS_DEBUG} -gcv8")
@@ -230,6 +248,38 @@ macro(ASM_COMPILE_TO_TARGET target)
     endif()
 endmacro()
 
+check_symbol_exists(strnlen_s "string.h" HAVE_STRNLEN_S)
+check_symbol_exists(strncpy_s "string.h" HAVE_STRNCPY_S)
+check_symbol_exists(strcpy_s "string.h" HAVE_STRCPY_S)
+set_property(DIRECTORY .
+    APPEND
+    PROPERTY COMPILE_DEFINITIONS
+        SAFECLIB_STR_NULL_SLACK=1
+        $<$<BOOL:${HAVE_STRNLEN_S}>:HAVE_STRNLEN_S=1>
+        $<$<BOOL:${HAVE_STRNCPY_S}>:HAVE_STRNCPY_S=1>
+        $<$<BOOL:${HAVE_STRCPY_S}>:HAVE_STRCPY_S=1>
+        $<$<BOOL:${WIN32}>:_WIN32_WINNT=0x0601>)
+if(NOT HAVE_STRCPY_S OR NOT HAVE_STRNCPY_S OR NOT HAVE_STRNLEN_S)
+    add_library(safestringlib OBJECT
+        third_party/safestringlib/safeclib_private.h
+        third_party/safestringlib/safe_lib.h
+        third_party/safestringlib/safe_types.h
+        third_party/safestringlib/safe_lib_errno.h
+        third_party/safestringlib/safe_str_lib.h
+        third_party/safestringlib/safe_str_constraint.h
+        third_party/safestringlib/safe_str_constraint.c
+        third_party/safestringlib/ignore_handler_s.c
+        $<$<NOT:$<BOOL:${HAVE_STRNLEN_S}>>:third_party/safestringlib/strnlen_s.c>
+        $<$<NOT:$<BOOL:${HAVE_STRNCPY_S}>>:third_party/safestringlib/strncpy_s.c>
+        $<$<NOT:$<BOOL:${HAVE_STRCPY_S}>>:third_party/safestringlib/strcpy_s.c>)
+endif()
+
+include_directories(.)
+
+# Find out if we have threading available
+set(CMAKE_THREAD_PREFER_PTHREADS ON)
+find_package(Threads)
+
 # Add Subdirectories
 add_subdirectory(Source/Lib/Common)
 if(BUILD_ENC)
@@ -252,5 +302,6 @@ if(BUILD_TESTING)
 endif()
 
 add_subdirectory(third_party/fastfeat)
+add_subdirectory(third_party/cpuinfo)
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/Source/API/ DESTINATION "${CMAKE_INSTALL_FULL_INCLUDEDIR}/svt-av1" FILES_MATCHING PATTERN "*.h")

@@ -42,15 +42,15 @@ extern "C" {
 typedef DaalaReader_t SvtReader;
 
 static INLINE int svt_reader_init(SvtReader *r, const uint8_t *buffer, size_t size) {
-    return aom_daala_reader_init(r, buffer, (int)size);
+    return svt_aom_daala_reader_init(r, buffer, (int)size);
 }
 
 static INLINE const uint8_t *aom_reader_find_begin(SvtReader *r) {
-    return aom_daala_reader_find_begin(r);
+    return svt_aom_daala_reader_find_begin(r);
 }
 
 static INLINE const uint8_t *aom_reader_find_end(SvtReader *r) {
-    return aom_daala_reader_find_end(r);
+    return svt_aom_daala_reader_find_end(r);
 }
 
 static INLINE int aom_read_(SvtReader *r, int prob ACCT_STR_PARAM) {
@@ -82,7 +82,8 @@ static INLINE int aom_read_cdf_(SvtReader *r, const AomCdfProb *cdf, int nsymbs 
 static INLINE int aom_read_symbol_(SvtReader *r, AomCdfProb *cdf, int nsymbs ACCT_STR_PARAM) {
     int ret;
     ret = svt_read_cdf(r, cdf, nsymbs, ACCT_STR_NAME);
-    if (r->allow_update_cdf) dec_update_cdf(cdf, ret, nsymbs);
+    if (r->allow_update_cdf)
+        dec_update_cdf(cdf, ret, nsymbs);
     return ret;
 }
 
@@ -90,7 +91,8 @@ static INLINE int aom_read_ns_ae_(SvtReader *r, int nsymbs ACCT_STR_PARAM) {
     int w = get_msb(nsymbs) + 1; //w = FloorLog2(n) + 1
     int m = (1 << w) - nsymbs;
     int v = svt_read_literal(r, w - 1, ACCT_STR_NAME);
-    if (v < m) return v;
+    if (v < m)
+        return v;
     int extra_bit = svt_read_literal(r, 1, ACCT_STR_NAME);
     return (v << 1) - m + extra_bit;
 }

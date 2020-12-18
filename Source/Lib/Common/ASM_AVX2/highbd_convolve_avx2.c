@@ -20,12 +20,12 @@
 // -----------------------------------------------------------------------------
 // Copy and average
 
-void eb_av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
-                                      int32_t dst_stride, int32_t w, int32_t h,
-                                      const InterpFilterParams *filter_params_x,
-                                      const InterpFilterParams *filter_params_y,
-                                      const int32_t subpel_x_q4, const int32_t subpel_y_q4,
-                                      ConvolveParams *conv_params, int32_t bd) {
+void svt_av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
+                                       int32_t dst_stride, int32_t w, int32_t h,
+                                       const InterpFilterParams *filter_params_x,
+                                       const InterpFilterParams *filter_params_y,
+                                       const int32_t subpel_x_q4, const int32_t subpel_y_q4,
+                                       ConvolveParams *conv_params, int32_t bd) {
     int32_t               i, j;
     const int32_t         fo_vert = filter_params_y->taps / 2 - 1;
     const uint16_t *const src_ptr = src - fo_vert * src_stride;
@@ -43,7 +43,7 @@ void eb_av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int32_t src_stride, u
 
     const __m128i round_shift_bits = _mm_cvtsi32_si128(bits);
     const __m256i round_const_bits = _mm256_set1_epi32((1 << bits) >> 1);
-    const __m256i clp_pxl       = _mm256_set1_epi16(bd == 10 ? 1023 : (bd == 12 ? 4095 : 255));
+    const __m256i clp_pxl          = _mm256_set1_epi16(bd == 10 ? 1023 : (bd == 12 ? 4095 : 255));
     const __m256i zero             = _mm256_setzero_si256();
 
     prepare_coeffs_8tap_avx2(filter_params_y, subpel_y_q4, coeffs_y);
@@ -107,8 +107,8 @@ void eb_av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int32_t src_stride, u
 
                 const __m256i res_a = convolve16_8tap_avx2(s, coeffs_y);
 
-                __m256i res_a_round =
-                    _mm256_sra_epi32(_mm256_add_epi32(res_a, round_const_bits), round_shift_bits);
+                __m256i res_a_round = _mm256_sra_epi32(_mm256_add_epi32(res_a, round_const_bits),
+                                                       round_shift_bits);
 
                 if (w - j > 4) {
                     const __m256i res_b       = convolve16_8tap_avx2(s + 4, coeffs_y);
@@ -155,12 +155,12 @@ void eb_av1_highbd_convolve_y_sr_avx2(const uint16_t *src, int32_t src_stride, u
     }
 }
 
-void eb_av1_highbd_convolve_x_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
-                                      int32_t dst_stride, int32_t w, int32_t h,
-                                      const InterpFilterParams *filter_params_x,
-                                      const InterpFilterParams *filter_params_y,
-                                      const int32_t subpel_x_q4, const int32_t subpel_y_q4,
-                                      ConvolveParams *conv_params, int32_t bd) {
+void svt_av1_highbd_convolve_x_sr_avx2(const uint16_t *src, int32_t src_stride, uint16_t *dst,
+                                       int32_t dst_stride, int32_t w, int32_t h,
+                                       const InterpFilterParams *filter_params_x,
+                                       const InterpFilterParams *filter_params_y,
+                                       const int32_t subpel_x_q4, const int32_t subpel_y_q4,
+                                       ConvolveParams *conv_params, int32_t bd) {
     int32_t               i, j;
     const int32_t         fo_horiz = filter_params_x->taps / 2 - 1;
     const uint16_t *const src_ptr  = src - fo_horiz;
@@ -179,7 +179,7 @@ void eb_av1_highbd_convolve_x_sr_avx2(const uint16_t *src, int32_t src_stride, u
     const int32_t bits             = FILTER_BITS - conv_params->round_0;
     const __m128i round_shift_bits = _mm_cvtsi32_si128(bits);
     const __m256i round_const_bits = _mm256_set1_epi32((1 << bits) >> 1);
-    const __m256i clp_pxl       = _mm256_set1_epi16(bd == 10 ? 1023 : (bd == 12 ? 4095 : 255));
+    const __m256i clp_pxl          = _mm256_set1_epi16(bd == 10 ? 1023 : (bd == 12 ? 4095 : 255));
     const __m256i zero             = _mm256_setzero_si256();
 
     assert(bits >= 0);
@@ -215,10 +215,10 @@ void eb_av1_highbd_convolve_x_sr_avx2(const uint16_t *src, int32_t src_stride, u
             __m256i res_odd = convolve16_8tap_avx2(s, coeffs_x);
             res_odd = _mm256_sra_epi32(_mm256_add_epi32(res_odd, round_const_x), round_shift_x);
 
-            res_even =
-                _mm256_sra_epi32(_mm256_add_epi32(res_even, round_const_bits), round_shift_bits);
-            res_odd =
-                _mm256_sra_epi32(_mm256_add_epi32(res_odd, round_const_bits), round_shift_bits);
+            res_even = _mm256_sra_epi32(_mm256_add_epi32(res_even, round_const_bits),
+                                        round_shift_bits);
+            res_odd  = _mm256_sra_epi32(_mm256_add_epi32(res_odd, round_const_bits),
+                                       round_shift_bits);
 
             __m256i res_even1 = _mm256_packs_epi32(res_even, res_even);
             __m256i res_odd1  = _mm256_packs_epi32(res_odd, res_odd);

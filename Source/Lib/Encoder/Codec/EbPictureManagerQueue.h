@@ -47,6 +47,7 @@ typedef struct ReferenceQueueEntry {
     uint64_t         picture_number;
     uint64_t         decode_order;
     EbObjectWrapper *reference_object_ptr;
+    EbObjectWrapper *ref_wraper;
     uint32_t         dependent_count;
     EbBool           release_enable;
     EbBool           reference_available;
@@ -66,9 +67,10 @@ typedef struct ReferenceQueueEntry {
 typedef struct PicQueueEntry {
     EbDctor dctor;
 
-    uint64_t     pic_num;
-    int32_t      dep_cnt_diff; //increase(e.g 4L->5L) or decrease of dep cnt . not including the run-time decrease
-    uint8_t      is_done;
+    uint64_t pic_num;
+    int32_t
+        dep_cnt_diff; //increase(e.g 4L->5L) or decrease of dep cnt . not including the run-time decrease
+    uint8_t is_done;
 } PicQueueEntry;
 /************************************************
      * Rate Control Input Queue Entry
