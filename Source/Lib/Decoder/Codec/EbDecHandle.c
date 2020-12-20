@@ -142,6 +142,47 @@ static void copy_even(uint8_t *luma, uint32_t wd, uint32_t ht, uint32_t stride, 
                    sizeof(*luma) * (wd << use_hbd));
     }
 }
+
+static void svt_dec_copy_info(EbDecHandle *dec_handle_ptr, EbAV1StreamInfo *stream_info,
+                              EbAV1FrameInfo *frame_info) {
+    if (stream_info != NULL) {
+        stream_info->seq_profile = dec_handle_ptr->seq_header.seq_profile;
+
+        stream_info->max_picture_width  = dec_handle_ptr->seq_header.max_frame_width;
+        stream_info->max_picture_height = dec_handle_ptr->seq_header.max_frame_height;
+
+        stream_info->num_operating_points =
+            dec_handle_ptr->seq_header.operating_points_cnt_minus_1 + 1;
+        memcpy(stream_info->op_points,
+               dec_handle_ptr->seq_header.operating_point,
+               MAX_NUM_OPERATING_POINTS);
+
+        stream_info->timing_info  = dec_handle_ptr->seq_header.timing_info;
+        stream_info->color_config = dec_handle_ptr->seq_header.color_config;
+        stream_info->film_grain_params_present =
+            dec_handle_ptr->seq_header.film_grain_params_present;
+
+        // Not sure where to get this info
+        stream_info->is_annex_b = 0;
+    }
+
+    if (frame_info != NULL) {
+        // Not sure where to get this info
+        frame_info->layer = 0;
+
+        frame_info->frame_presentation_time = dec_handle_ptr->frame_header.frame_presentation_time;
+
+        frame_info->frame_width   = dec_handle_ptr->frame_header.frame_size.frame_width;
+        frame_info->frame_height  = dec_handle_ptr->frame_header.frame_size.frame_height;
+        frame_info->render_width  = dec_handle_ptr->frame_header.frame_size.render_width;
+        frame_info->render_height = dec_handle_ptr->frame_header.frame_size.render_height;
+        frame_info->superres_upscaled_width =
+            dec_handle_ptr->frame_header.frame_size.superres_upscaled_width;
+        frame_info->superres_upscaled_height =
+            dec_handle_ptr->frame_header.frame_size.superres_upscaled_height;
+    }
+}
+
 /* Copy from recon buffer to out buffer! */
 int svt_dec_out_buf(EbDecHandle *dec_handle_ptr, EbBufferHeaderType *p_buffer) {
     EbPictureBufferDesc *recon_picture_buf = dec_handle_ptr->cur_pic_buf[0]->ps_pic_buf;
@@ -617,13 +658,29 @@ EB_API EbErrorType svt_av1_dec_frame(EbComponentType *svt_dec_component, const u
     return return_error;
 }
 
+EB_API EbErrorType svt_av1_dec_peek_picture(EbComponentType *svt_dec_component,
+                                            EbAV1StreamInfo *stream_info,
+                                            EbAV1FrameInfo * frame_info) {
+    if (svt_dec_component == NULL)
+        return EB_ErrorBadParameter;
+
+    EbDecHandle *dec_handle_ptr = (EbDecHandle *)svt_dec_component->p_component_private;
+
+    /* TODO: Should add logic for show_existing_frame */
+    if (!dec_handle_ptr->seq_header_done || !dec_handle_ptr->seen_frame_header ||
+        0 == dec_handle_ptr->show_frame) {
+        assert(0 == dec_handle_ptr->show_existing_frame);
+        return EB_DecNoOutputPicture;
+    }
+
+    svt_dec_copy_info(dec_handle_ptr, stream_info, frame_info);
+    return EB_ErrorNone;
+}
+
 EB_API EbErrorType svt_av1_dec_get_picture(EbComponentType *   svt_dec_component,
                                            EbBufferHeaderType *p_buffer,
                                            EbAV1StreamInfo *   stream_info,
                                            EbAV1FrameInfo *    frame_info) {
-    (void)stream_info;
-    (void)frame_info;
-
     EbErrorType return_error = EB_ErrorNone;
     if (svt_dec_component == NULL)
         return EB_ErrorBadParameter;
@@ -632,6 +689,8 @@ EB_API EbErrorType svt_av1_dec_get_picture(EbComponentType *   svt_dec_component
     /* Copy from recon pointer and return! TODO: Should remove the svt_memcpy! */
     if (0 == svt_dec_out_buf(dec_handle_ptr, p_buffer))
         return_error = EB_DecNoOutputPicture;
+
+    svt_dec_copy_info(dec_handle_ptr, stream_info, frame_info);
     return return_error;
 }
 

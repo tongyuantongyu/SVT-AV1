@@ -212,6 +212,7 @@ int32_t main(int32_t argc, char *argv[]) {
             fprintf(stderr, "Decoding \n");
             EbAV1StreamInfo *stream_info = (EbAV1StreamInfo *)malloc(sizeof(EbAV1StreamInfo));
             EbAV1FrameInfo * frame_info  = (EbAV1FrameInfo *)malloc(sizeof(EbAV1FrameInfo));
+            uint64_t frame_count = 0;
 
             if (config_ptr->skip_frames)
                 fprintf(stderr, "Skipping first %" PRIu64 " frames.\n", config_ptr->skip_frames);
@@ -221,6 +222,7 @@ int32_t main(int32_t argc, char *argv[]) {
                     break;
                 skip_frame--;
             }
+            frame_count += config_ptr->skip_frames;
             stop_after = config_ptr->frames_to_be_decoded;
             if (enable_md5)
                 md5_init(&md5_ctx);
@@ -244,8 +246,18 @@ int32_t main(int32_t argc, char *argv[]) {
 
                         if (enable_md5)
                             write_md5(recon_buffer, &md5_ctx);
+
+                        if (frame_info->render_width != cli.width ||
+                            frame_info->render_height != cli.height)
+                            fprintf(stderr,
+                                    "Size mismatch on frame %" PRIu64 ": output size: %" PRIu16 "x%" PRIu16
+                                    ", frame size: %" PRIu16 "x%" PRIu16 ".\n", frame_count,
+                                    cli.width, cli.height, frame_info->render_width, frame_info->render_height);
+
                         if (cli.out_file != NULL)
                             write_frame(recon_buffer, &cli);
+
+                        frame_count++;
                     }
                 } else
                     break;

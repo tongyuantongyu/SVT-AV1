@@ -51,6 +51,19 @@ typedef struct EbAV1FrameInfo {
 
     /* Frame presentation time */
     uint64_t frame_presentation_time;
+
+    /* Width of the frame in luma samples */
+    uint16_t frame_width;
+    /* Height of the frame in luma samples */
+    uint16_t frame_height;
+    /* Render width of the frame in luma samples */
+    uint16_t render_width;
+    /* Render height of the frame in luma samples */
+    uint16_t render_height;
+    /* Width of Upscaled SuperRes */
+    uint16_t superres_upscaled_width;
+    /* Height of Upscaled SuperRes */
+    uint16_t superres_upscaled_height;
 } EbAV1FrameInfo;
 
 typedef struct EbSvtAv1DecConfiguration {
@@ -169,7 +182,23 @@ EB_API EbErrorType svt_av1_dec_init(EbComponentType *svt_dec_component);
 EB_API EbErrorType svt_av1_dec_frame(EbComponentType *svt_dec_component, const uint8_t *data,
                                      const size_t data_size, uint32_t is_annexb);
 
-/* STEP 5: Get the next decoded picture. When several output pictures
+/* STEP 5: Get the info of next decoded picture. This step is optional, you can
+     * skip this step if you don't need the info of decoded picture before
+     * receiving the picture data.
+     *
+     * Parameter:
+     * @ *svt_dec_component     Decoder handle.
+     * @ *stream_info           Sequence header info
+     * @ *frame_info            Last decoded frame info
+     *
+     *  Returns EB_ErrorNone if the picture has been returned successfully.
+     *  Returns EB_DecNoOutputPicture if the next output picture has not
+     *  been generated yet. Calling a decoding function is needed to generate more pictures. */
+EB_API EbErrorType svt_av1_dec_peek_picture(EbComponentType *svt_dec_component,
+                                            EbAV1StreamInfo *stream_info,
+                                            EbAV1FrameInfo * frame_info);
+
+/* STEP 6: Get the next decoded picture. When several output pictures
      * have been generated, calling this function multiple times will
      * iterate over the decoded pictures. The previous output picture becomes
      * unavailable after the svt_av1_dec_get_picture() or one of the decoding
@@ -189,13 +218,13 @@ EB_API EbErrorType svt_av1_dec_get_picture(EbComponentType *   svt_dec_component
                                            EbAV1StreamInfo *   stream_info,
                                            EbAV1FrameInfo *    frame_info);
 
-/* STEP 6: Deinitialize decoder library.
+/* STEP 7: Deinitialize decoder library.
      *
      * Parameter:
      * @ *svt_dec_component     Decoder handle */
 EB_API EbErrorType svt_av1_dec_deinit(EbComponentType *svt_dec_component);
 
-/* STEP 7: Deconstruct decoder handler.
+/* STEP 8: Deconstruct decoder handler.
      *
      * Parameter:
      * @ *svt_dec_component     Decoder handle */
